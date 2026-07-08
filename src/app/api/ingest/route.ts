@@ -24,8 +24,16 @@ export async function POST(req: NextRequest) {
   const sourceParam = req.nextUrl.searchParams.get("source");
   const sourceId = sourceParam ? parseInt(sourceParam, 10) : undefined;
 
-  const report = await runIngest({
-    sourceId: Number.isNaN(sourceId as number) ? undefined : sourceId,
-  });
-  return NextResponse.json(report);
+  try {
+    const report = await runIngest({
+      sourceId: Number.isNaN(sourceId as number) ? undefined : sourceId,
+    });
+    return NextResponse.json(report);
+  } catch (err) {
+    console.error("/api/ingest: error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "ingest failed" },
+      { status: 500 }
+    );
+  }
 }

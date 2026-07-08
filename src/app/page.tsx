@@ -8,6 +8,7 @@ import {
   type EmailListItem,
 } from "@/lib/db";
 import { PARTIES, emailTypeLabel } from "@/lib/taxonomy";
+import DbSetupNotice from "./components/DbSetupNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -102,22 +103,27 @@ export default async function FeedPage({
     page: Math.max(1, parseInt(first(sp.page) || "1", 10) || 1),
   };
 
-  const { items, total, page, pageCount } = await queryEmails({
-    q: filters.q || undefined,
-    topic: filters.topic || undefined,
-    type: filters.type || undefined,
-    party: filters.party || undefined,
-    source: filters.source ? parseInt(filters.source, 10) : undefined,
-    sort: filters.sort,
-    page: filters.page,
-  });
-
-  const [sources, topics, types, s] = await Promise.all([
-    listSources(),
-    listUsedTopics(),
-    listUsedTypes(),
-    stats(),
-  ]);
+  let items, total, page, pageCount, sources, topics, types, s;
+  try {
+    ({ items, total, page, pageCount } = await queryEmails({
+      q: filters.q || undefined,
+      topic: filters.topic || undefined,
+      type: filters.type || undefined,
+      party: filters.party || undefined,
+      source: filters.source ? parseInt(filters.source, 10) : undefined,
+      sort: filters.sort,
+      page: filters.page,
+    }));
+    [sources, topics, types, s] = await Promise.all([
+      listSources(),
+      listUsedTopics(),
+      listUsedTypes(),
+      stats(),
+    ]);
+  } catch (err) {
+    console.error("Feed page: database error:", err);
+    return <DbSetupNotice error={err} />;
+  }
 
   const currentParams: Record<string, string> = {
     q: filters.q,

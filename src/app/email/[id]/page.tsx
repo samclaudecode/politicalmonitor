@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import sanitizeHtml from "sanitize-html";
 import { getEmail } from "@/lib/db";
 import { emailTypeLabel } from "@/lib/taxonomy";
+import DbSetupNotice from "../../components/DbSetupNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,13 @@ export default async function EmailPage({
   const { id } = await params;
   const emailId = parseInt(id, 10);
   if (Number.isNaN(emailId)) notFound();
-  const email = await getEmail(emailId);
+  let email;
+  try {
+    email = await getEmail(emailId);
+  } catch (err) {
+    console.error("Email page: database error:", err);
+    return <DbSetupNotice error={err} />;
+  }
   if (!email) notFound();
 
   const received = new Date(email.received_at).toLocaleString("en-US", {

@@ -9,6 +9,18 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
+  try {
+    return await handle(p);
+  } catch (err) {
+    console.error("/api/emails: database error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "database error" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handle(p: URLSearchParams) {
   const result = await queryEmails({
     q: p.get("q") || undefined,
     topic: p.get("topic") || undefined,

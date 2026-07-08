@@ -1,6 +1,7 @@
 import { listSources, stats } from "@/lib/db";
 import { PARTIES } from "@/lib/taxonomy";
 import { isCategorizationConfigured } from "@/lib/categorize";
+import DbSetupNotice from "../components/DbSetupNotice";
 import {
   addSourceAction,
   deleteSourceAction,
@@ -24,7 +25,13 @@ export default async function SourcesPage({
   const sp = await searchParams;
   const ok = first(sp.ok);
   const error = first(sp.error);
-  const [sources, s] = await Promise.all([listSources(), stats()]);
+  let sources, s;
+  try {
+    [sources, s] = await Promise.all([listSources(), stats()]);
+  } catch (err) {
+    console.error("Sources page: database error:", err);
+    return <DbSetupNotice error={err} />;
+  }
   const aiReady = isCategorizationConfigured();
 
   return (

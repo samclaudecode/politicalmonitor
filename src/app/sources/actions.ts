@@ -52,7 +52,14 @@ export async function toggleSourceAction(formData: FormData) {
 }
 
 export async function ingestNowAction() {
-  const report = await runIngest();
+  let report;
+  try {
+    report = await runIngest();
+  } catch (err) {
+    console.error("ingestNowAction: error:", err);
+    const message = err instanceof Error ? err.message : "ingest failed";
+    redirect("/sources?error=" + encodeURIComponent(`Ingest failed: ${message}`.slice(0, 400)));
+  }
   const errors = report.sources.filter((s) => s.error);
   const catErrors = report.categorization.errors.length;
   let message = `Ingest complete: ${report.totalNew} new email${
