@@ -4,9 +4,10 @@ import { Pool, types } from "pg";
 types.setTypeParser(1184, (v: string) => new Date(v).toISOString());
 types.setTypeParser(20, (v: string) => parseInt(v, 10));
 
-// Accept the names used by Netlify DB, the Neon extension, Vercel-style
-// setups, and manual configuration.
+// Accept the names used by the current Netlify Database (NETLIFY_DB_URL),
+// the legacy Neon extension (NETLIFY_DATABASE_URL), and manual/other setups.
 export const DB_URL_ENV_VARS = [
+  "NETLIFY_DB_URL",
   "NETLIFY_DATABASE_URL",
   "DATABASE_URL",
   "NEON_DATABASE_URL",
@@ -20,7 +21,7 @@ function connectionString(): string {
     if (url) return url;
   }
   throw new Error(
-    "No database configured. Set NETLIFY_DATABASE_URL (created by `netlify db init` / the Neon extension) or DATABASE_URL."
+    "No database configured. Set NETLIFY_DB_URL (created by Netlify Database), NETLIFY_DATABASE_URL (legacy Neon extension), or DATABASE_URL."
   );
 }
 

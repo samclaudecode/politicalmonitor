@@ -49,7 +49,7 @@ netlify login
 
 # from the repo root:
 netlify init      # create/link the Netlify site
-netlify db init   # provision Netlify DB (Postgres) — injects NETLIFY_DATABASE_URL
+netlify db init   # provision Netlify Database (Postgres) — injects NETLIFY_DB_URL
 
 # set the remaining environment variables:
 netlify env:set OPENROUTER_API_KEY sk-or-...
@@ -83,7 +83,8 @@ Environment variables (see `.env.example`):
 
 | Variable | Purpose |
 | --- | --- |
-| `NETLIFY_DATABASE_URL` | Postgres connection string, injected by Netlify DB. |
+| `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
+| `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |
 | `DATABASE_URL` | Fallback Postgres URL for local dev / other hosts. |
 | `OPENROUTER_API_KEY` | OpenRouter key used for DeepSeek categorization. Without it, emails are archived but left uncategorized. |
 | `OPENROUTER_MODEL` | Model id, defaults to `deepseek/deepseek-chat-v3-0324`. |

@@ -9,7 +9,7 @@ export default function DbSetupNotice({ error }: { error: unknown }) {
   const hasDbUrl = DB_URL_ENV_VARS.some((name) => Boolean(process.env[name]));
   // Names only (never values): which database-ish env vars reach the runtime.
   const visibleDbVars = Object.keys(process.env)
-    .filter((k) => /DATABASE|NEON|POSTGRES|^PG/i.test(k))
+    .filter((k) => /_DB_|_DB$|^DB_|DATABASE|NEON|POSTGRES|^PG/i.test(k))
     .sort();
 
   return (
@@ -57,11 +57,12 @@ export default function DbSetupNotice({ error }: { error: unknown }) {
               site</strong>.
             </li>
             <li>
-              <strong>Is the database connected to this site?</strong> A
-              Netlify DB / Neon database is linked to one specific site. In the
-              dashboard open this site → <strong>Extensions → Neon
-              Database</strong> and confirm it&apos;s connected here (not to
-              another site).
+              <strong>Is the database connected to this site?</strong> The
+              current Netlify Database sets <code>NETLIFY_DB_URL</code> on the
+              site it&apos;s attached to (the legacy Neon extension set{" "}
+              <code>NETLIFY_DATABASE_URL</code>). In the dashboard open this
+              site → <strong>Database</strong> (or Extensions → Neon) and
+              confirm it&apos;s connected here, not to another site.
             </li>
             <li>
               <strong>Does the variable exist with the right scope?</strong>{" "}
