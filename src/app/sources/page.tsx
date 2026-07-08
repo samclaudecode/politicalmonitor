@@ -24,8 +24,7 @@ export default async function SourcesPage({
   const sp = await searchParams;
   const ok = first(sp.ok);
   const error = first(sp.error);
-  const sources = listSources();
-  const s = stats();
+  const [sources, s] = await Promise.all([listSources(), stats()]);
   const aiReady = isCategorizationConfigured();
 
   return (

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
-  const result = queryEmails({
+  const result = await queryEmails({
     q: p.get("q") || undefined,
     topic: p.get("topic") || undefined,
     type: p.get("type") || undefined,

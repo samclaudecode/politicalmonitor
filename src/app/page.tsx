@@ -102,7 +102,7 @@ export default async function FeedPage({
     page: Math.max(1, parseInt(first(sp.page) || "1", 10) || 1),
   };
 
-  const { items, total, page, pageCount } = queryEmails({
+  const { items, total, page, pageCount } = await queryEmails({
     q: filters.q || undefined,
     topic: filters.topic || undefined,
     type: filters.type || undefined,
@@ -112,10 +112,12 @@ export default async function FeedPage({
     page: filters.page,
   });
 
-  const sources = listSources();
-  const topics = listUsedTopics();
-  const types = listUsedTypes();
-  const s = stats();
+  const [sources, topics, types, s] = await Promise.all([
+    listSources(),
+    listUsedTopics(),
+    listUsedTypes(),
+    stats(),
+  ]);
 
   const currentParams: Record<string, string> = {
     q: filters.q,

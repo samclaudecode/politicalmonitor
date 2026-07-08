@@ -11,16 +11,17 @@
     "ingest": "tsx scripts/ingest.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
     "fast-xml-parser": "^4.5.3",
     "next": "^15.3.4",
+    "pg": "^8.16.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "sanitize-html": "^2.14.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
+    "@netlify/functions": "^3.1.0",
     "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@types/sanitize-html": "^2.13.0",

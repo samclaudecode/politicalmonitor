@@ -43,7 +43,7 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     result.fetched = true;
 
     for (const entry of feed.entries) {
-      const id = insertEmail({
+      const id = await insertEmail({
         source_id: source.id,
         guid: entry.guid,
         subject: entry.title,
@@ -55,11 +55,11 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
       });
       if (id !== null) result.newEmails++;
     }
-    recordFetch(source.id, `ok: ${result.newEmails} new`);
+    await recordFetch(source.id, `ok: ${result.newEmails} new`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     result.error = message;
-    recordFetch(source.id, `error: ${message.slice(0, 200)}`);
+    await recordFetch(source.id, `error: ${message.slice(0, 200)}`);
   }
   return result;
 }
@@ -73,8 +73,8 @@ export async function runIngest(options?: {
   categorizeLimit?: number;
 }): Promise<IngestReport> {
   const sources = options?.sourceId
-    ? [getSource(options.sourceId)].filter((s): s is Source => Boolean(s))
-    : listSources().filter((s) => s.active);
+    ? [await getSource(options.sourceId)].filter((s): s is Source => Boolean(s))
+    : (await listSources()).filter((s) => s.active);
 
   const results: SourceIngestResult[] = [];
   for (const source of sources) {

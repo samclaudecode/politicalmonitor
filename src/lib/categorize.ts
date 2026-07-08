@@ -121,7 +121,7 @@ export async function categorizeEmail(email: EmailRow): Promise<void> {
     email.sender_name,
     body
   );
-  saveCategorization(email.id, result);
+  await saveCategorization(email.id, result);
 }
 
 export interface CategorizeBatchResult {
@@ -143,7 +143,7 @@ export async function categorizePending(limit = 25): Promise<CategorizeBatchResu
     result.errors.push("OPENROUTER_API_KEY not set — skipping categorization");
     return result;
   }
-  const pending = listUncategorizedEmails(limit);
+  const pending = await listUncategorizedEmails(limit);
   for (const email of pending) {
     result.attempted++;
     try {
@@ -153,7 +153,7 @@ export async function categorizePending(limit = 25): Promise<CategorizeBatchResu
       result.failed++;
       const message = err instanceof Error ? err.message : String(err);
       result.errors.push(`email ${email.id}: ${message}`);
-      saveCategorizationError(email.id, message);
+      await saveCategorizationError(email.id, message);
     }
   }
   return result;

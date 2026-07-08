@@ -39,7 +39,7 @@ export default async function EmailPage({
   const { id } = await params;
   const emailId = parseInt(id, 10);
   if (Number.isNaN(emailId)) notFound();
-  const email = getEmail(emailId);
+  const email = await getEmail(emailId);
   if (!email) notFound();
 
   const received = new Date(email.received_at).toLocaleString("en-US", {

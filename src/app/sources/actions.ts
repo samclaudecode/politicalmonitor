@@ -17,7 +17,7 @@ export async function addSourceAction(formData: FormData) {
     redirect("/sources?error=" + encodeURIComponent("Feed URL is not a valid URL"));
   }
   try {
-    addSource({
+    await addSource({
       feed_url,
       name,
       candidate: String(formData.get("candidate") || "").trim() || undefined,
@@ -27,10 +27,10 @@ export async function addSourceAction(formData: FormData) {
     });
   } catch (err) {
     const message =
-      err instanceof Error && err.message.includes("UNIQUE")
+      err instanceof Error && /duplicate key|unique/i.test(err.message)
         ? "That feed URL is already registered"
-        : "Could not add source";
-    redirect("/sources?error=" + encodeURIComponent(message));
+        : `Could not add source: ${err instanceof Error ? err.message : "unknown error"}`;
+    redirect("/sources?error=" + encodeURIComponent(message.slice(0, 300)));
   }
   revalidatePath("/sources");
   redirect("/sources?ok=" + encodeURIComponent(`Added source “${name}”`));
@@ -38,7 +38,7 @@ export async function addSourceAction(formData: FormData) {
 
 export async function deleteSourceAction(formData: FormData) {
   const id = parseInt(String(formData.get("id") || ""), 10);
-  if (!Number.isNaN(id)) deleteSource(id);
+  if (!Number.isNaN(id)) await deleteSource(id);
   revalidatePath("/sources");
   redirect("/sources?ok=" + encodeURIComponent("Source deleted"));
 }
@@ -46,7 +46,7 @@ export async function deleteSourceAction(formData: FormData) {
 export async function toggleSourceAction(formData: FormData) {
   const id = parseInt(String(formData.get("id") || ""), 10);
   const active = String(formData.get("active")) === "1";
-  if (!Number.isNaN(id)) setSourceActive(id, active);
+  if (!Number.isNaN(id)) await setSourceActive(id, active);
   revalidatePath("/sources");
   redirect("/sources");
 }

@@ -1,0 +1,14 @@
+# Netlify configuration.
+# Deploy: `netlify init` (link the repo) + `netlify db init` (provision the
+# Postgres database) — see README.md.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Scheduled + on-demand functions live in netlify/functions/.
+[functions]
+  node_bundler = "esbuild"
