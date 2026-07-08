@@ -20,14 +20,17 @@ campaign mailing list ──► email-to-ATOM bridge ──► ingester ──�
                                                            summary, fundraising ask)
 ```
 
-1. **Subscribe** to a candidate's mailing list using an email-to-feed bridge
-   such as [Kill the Newsletter!](https://kill-the-newsletter.com) — it gives
-   you an inbox address and a matching ATOM feed URL.
-2. **Register** that feed URL on the **Sources** page, tagged with candidate,
-   party, office, and state.
-3. **Ingest** — every 30 minutes (or on demand) the app fetches each active
-   feed, parses new entries, and stores each email deduplicated by ATOM entry
-   ID (RSS 2.0 feeds also work).
+1. **Subscribe** to a candidate's mailing list using your
+   [Feedbin](https://feedbin.com) email address (found in Feedbin settings;
+   you can create custom `@feedb.in` addresses per topic). Every sender
+   becomes its own feed inside your Feedbin account. (Public ATOM/RSS feed
+   URLs, e.g. from Kill the Newsletter!, are also still supported.)
+2. **Import** — click "Import feeds from Feedbin" on the **Sources** page to
+   create a source per newsletter, then use **Edit** to tag each with
+   candidate, party, office, and state.
+3. **Ingest** — every 30 minutes (or on demand) the app pulls new entries for
+   each active source via the Feedbin API (or by fetching the ATOM/RSS URL),
+   deduplicated by entry ID.
 4. **Categorize** — each new email is sent to DeepSeek through the OpenRouter
    API, which assigns:
    - an **email type** (fundraising, event, volunteer, survey/petition,
@@ -83,6 +86,7 @@ Environment variables (see `.env.example`):
 
 | Variable | Purpose |
 | --- | --- |
+| `FEEDBIN_EMAIL` / `FEEDBIN_PASSWORD` | Feedbin login, used to import newsletter feeds and ingest their emails via the Feedbin API. |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |
 | `DATABASE_URL` | Fallback Postgres URL for local dev / other hosts. |

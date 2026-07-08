@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { addSource, deleteSource, setSourceActive } from "@/lib/db";
+import { addSource, deleteSource, setSourceActive, updateSource } from "@/lib/db";
 import { runIngest } from "@/lib/ingest";
+import { importFeedbinSources } from "@/lib/feedbin";
 
 export async function addSourceAction(formData: FormData) {
   const feed_url = String(formData.get("feed_url") || "").trim();
@@ -34,6 +35,45 @@ export async function addSourceAction(formData: FormData) {
   }
   revalidatePath("/sources");
   redirect("/sources?ok=" + encodeURIComponent(`Added source “${name}”`));
+}
+
+export async function updateSourceAction(formData: FormData) {
+  const id = parseInt(String(formData.get("id") || ""), 10);
+  const name = String(formData.get("name") || "").trim();
+  if (Number.isNaN(id) || !name) {
+    redirect("/sources?error=" + encodeURIComponent("Name is required"));
+  }
+  try {
+    await updateSource(id, {
+      name,
+      candidate: String(formData.get("candidate") || "").trim() || undefined,
+      party: String(formData.get("party") || "").trim() || undefined,
+      office: String(formData.get("office") || "").trim() || undefined,
+      state: String(formData.get("state") || "").trim() || undefined,
+    });
+  } catch (err) {
+    console.error("updateSourceAction:", err);
+    redirect("/sources?error=" + encodeURIComponent("Could not update source"));
+  }
+  revalidatePath("/sources");
+  revalidatePath("/");
+  redirect("/sources?ok=" + encodeURIComponent(`Updated “${name}”`));
+}
+
+export async function importFeedbinAction() {
+  let result;
+  try {
+    result = await importFeedbinSources();
+  } catch (err) {
+    console.error("importFeedbinAction:", err);
+    const message = err instanceof Error ? err.message : "Feedbin import failed";
+    redirect("/sources?error=" + encodeURIComponent(message.slice(0, 400)));
+  }
+  revalidatePath("/sources");
+  const message = result.imported
+    ? `Imported ${result.imported} feed${result.imported === 1 ? "" : "s"} from Feedbin: ${result.names.join(", ")}. Use Edit to tag each with candidate and party, then run an ingest.`
+    : `No new feeds to import (${result.skipped} already registered).`;
+  redirect("/sources?ok=" + encodeURIComponent(message.slice(0, 600)));
 }
 
 export async function deleteSourceAction(formData: FormData) {

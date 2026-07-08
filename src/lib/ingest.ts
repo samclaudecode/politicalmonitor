@@ -1,4 +1,5 @@
-import { parseFeed } from "./atom";
+import { parseFeed, type FeedEntry } from "./atom";
+import { feedbinFeedId, fetchFeedbinEntries } from "./feedbin";
 import {
   listSources,
   getSource,
@@ -30,24 +31,34 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     newEmails: 0,
   };
   try {
-    const res = await fetch(source.feed_url, {
-      headers: {
-        "User-Agent": "PoliticalMonitor/1.0 (+political email archive)",
-        Accept: "application/atom+xml, application/rss+xml, application/xml, text/xml",
-      },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching feed`);
-    const xml = await res.text();
-    const feed = parseFeed(xml);
+    let entries: FeedEntry[];
+    let feedTitle: string | null = null;
+
+    const feedbinId = feedbinFeedId(source.feed_url);
+    if (feedbinId !== null) {
+      entries = await fetchFeedbinEntries(feedbinId);
+    } else {
+      const res = await fetch(source.feed_url, {
+        headers: {
+          "User-Agent": "PoliticalMonitor/1.0 (+political email archive)",
+          Accept: "application/atom+xml, application/rss+xml, application/xml, text/xml",
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} fetching feed`);
+      const xml = await res.text();
+      const feed = parseFeed(xml);
+      entries = feed.entries;
+      feedTitle = feed.title;
+    }
     result.fetched = true;
 
-    for (const entry of feed.entries) {
+    for (const entry of entries) {
       const id = await insertEmail({
         source_id: source.id,
         guid: entry.guid,
         subject: entry.title,
-        sender_name: entry.authorName ?? feed.title,
+        sender_name: entry.authorName ?? feedTitle,
         sender_email: entry.authorEmail,
         received_at: entry.publishedAt,
         html_body: entry.html,

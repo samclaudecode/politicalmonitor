@@ -213,6 +213,32 @@ export async function addSource(input: {
   return res.rows[0].id as number;
 }
 
+export async function updateSource(
+  id: number,
+  input: {
+    name: string;
+    candidate?: string;
+    party?: string;
+    office?: string;
+    state?: string;
+  }
+): Promise<void> {
+  const p = await db();
+  await p.query(
+    `UPDATE sources
+     SET name = $1, candidate = $2, party = $3, office = $4, state = $5
+     WHERE id = $6`,
+    [
+      input.name,
+      input.candidate || null,
+      input.party || "Unknown",
+      input.office || null,
+      input.state || null,
+      id,
+    ]
+  );
+}
+
 export async function deleteSource(id: number): Promise<void> {
   const p = await db();
   await p.query("DELETE FROM sources WHERE id = $1", [id]);

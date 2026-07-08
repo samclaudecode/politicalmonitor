@@ -1,12 +1,15 @@
+import Link from "next/link";
 import { listSources, stats } from "@/lib/db";
 import { PARTIES } from "@/lib/taxonomy";
 import { isCategorizationConfigured } from "@/lib/categorize";
+import { isFeedbinConfigured, feedbinFeedId } from "@/lib/feedbin";
 import DbSetupNotice from "../components/DbSetupNotice";
 import {
   addSourceAction,
   deleteSourceAction,
   toggleSourceAction,
   ingestNowAction,
+  importFeedbinAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -33,21 +36,19 @@ export default async function SourcesPage({
     return <DbSetupNotice error={err} />;
   }
   const aiReady = isCategorizationConfigured();
+  const feedbinReady = isFeedbinConfigured();
 
   return (
     <>
       <h1 className="page-title">Feed Sources</h1>
       <p className="page-sub">
-        Register the ATOM feed for each candidate or politician&apos;s email
-        stream. Use an email-to-feed bridge (e.g.{" "}
-        <a
-          href="https://kill-the-newsletter.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Kill the Newsletter!
-        </a>
-        ) to turn a campaign mailing-list subscription into an ATOM feed URL.
+        Each candidate or politician&apos;s email stream is one source. Connect{" "}
+        <a href="https://feedbin.com" target="_blank" rel="noopener noreferrer">
+          Feedbin
+        </a>{" "}
+        (recommended — subscribe to campaign lists with your{" "}
+        <code>@feedb.in</code> address and import below), or register a public
+        ATOM/RSS feed URL directly.
       </p>
 
       {ok ? <div className="notice notice-ok">{ok}</div> : null}
@@ -79,17 +80,43 @@ export default async function SourcesPage({
       </div>
 
       <div className="form-card">
-        <h2>Add a source</h2>
+        <h2>Feedbin</h2>
+        {feedbinReady ? (
+          <>
+            <p style={{ color: "var(--ink-soft)", fontSize: "0.92rem" }}>
+              Subscribe to campaign mailing lists with your Feedbin email
+              address — each sender becomes its own feed in Feedbin. Import
+              turns every Feedbin feed into a source here (already-imported
+              ones are skipped), then use <strong>Edit</strong> to tag each
+              with candidate and party.
+            </p>
+            <form action={importFeedbinAction}>
+              <button type="submit">Import feeds from Feedbin</button>
+            </form>
+          </>
+        ) : (
+          <p style={{ color: "var(--ink-soft)", fontSize: "0.92rem" }}>
+            Not connected. Set <code>FEEDBIN_EMAIL</code> and{" "}
+            <code>FEEDBIN_PASSWORD</code> environment variables (your Feedbin
+            login) and redeploy to import newsletter feeds directly from your
+            Feedbin account.
+          </p>
+        )}
+      </div>
+
+      <div className="form-card">
+        <h2>Add a source manually</h2>
         <form action={addSourceAction}>
           <div className="form-grid">
             <div className="full">
-              <label htmlFor="feed_url">ATOM feed URL *</label>
+              <label htmlFor="feed_url">
+                ATOM/RSS feed URL (or feedbin:&lt;feed_id&gt;) *
+              </label>
               <input
                 id="feed_url"
                 name="feed_url"
-                type="url"
                 required
-                placeholder="https://kill-the-newsletter.com/feeds/xxxxxxxx.xml"
+                placeholder="https://example.com/feed.xml or feedbin:123456"
               />
             </div>
             <div>
@@ -169,9 +196,20 @@ export default async function SourcesPage({
                     </span>
                   </td>
                   <td style={{ maxWidth: 260, wordBreak: "break-all" }}>
-                    <a href={src.feed_url} target="_blank" rel="noopener noreferrer">
-                      {src.feed_url}
-                    </a>
+                    {feedbinFeedId(src.feed_url) !== null ? (
+                      <>
+                        <span className="chip chip-type">Feedbin</span>{" "}
+                        <code style={{ fontSize: "0.8rem" }}>{src.feed_url}</code>
+                      </>
+                    ) : (
+                      <a
+                        href={src.feed_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {src.feed_url}
+                      </a>
+                    )}
                   </td>
                   <td>
                     {src.last_fetched_at
@@ -181,6 +219,12 @@ export default async function SourcesPage({
                   <td>{src.last_fetch_status || "—"}</td>
                   <td>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <Link
+                        href={`/sources/${src.id}/edit`}
+                        className="btn btn-secondary btn-small"
+                      >
+                        Edit
+                      </Link>
                       <form action={toggleSourceAction}>
                         <input type="hidden" name="id" value={src.id} />
                         <input

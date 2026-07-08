@@ -35,8 +35,8 @@ export default function RootLayout({
         <main className="container">{children}</main>
         <footer className="site-footer">
           <div className="container">
-            Emails are ingested from ATOM feeds and categorized by policy topic
-            with DeepSeek via OpenRouter.
+            Emails are ingested via Feedbin and ATOM feeds, then categorized by
+            policy topic with DeepSeek via OpenRouter.
           </div>
         </footer>
       </body>
