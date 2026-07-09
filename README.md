@@ -96,14 +96,24 @@ Environment variables (see `.env.example`):
 
 ## Running ingestion
 
-Four equivalent ways to pull new emails and categorize them:
+Ingestion runs as a two-stage pipeline on Netlify, sized to Netlify's
+function limits: `scheduled-ingest` (a scheduled function, 30-second limit)
+fires every 30 minutes and triggers `ingest-background` (a background
+function, 15-minute limit), which pulls every active source — Feedbin API
+and ATOM/RSS — and categorizes new emails with DeepSeek.
 
-- **Automatic**: the `scheduled-ingest` Netlify function runs every 30 minutes
-  (edit the cron expression in `netlify/functions/scheduled-ingest.mts`).
-- Click **"Fetch feeds & categorize now"** on the Sources page.
-- `POST /api/ingest` (add `Authorization: Bearer $INGEST_SECRET` if set).
+Ways to trigger a pull:
+
+- **Automatic**: every 30 minutes via `scheduled-ingest` (edit the cron
+  expression in `netlify/functions/scheduled-ingest.mts`).
+- Click **"Fetch feeds & categorize now"** on the Sources page (hands off to
+  the background function on Netlify; runs inline in local dev).
+- `POST https://<site>/.netlify/functions/ingest-background` with
+  `Authorization: Bearer $INGEST_SECRET` — for external schedulers.
+- `POST /api/ingest` (same auth) — synchronous, returns the full report;
+  best for small source counts.
 - `npm run ingest` — CLI entry point, or
-  `netlify functions:invoke scheduled-ingest` to fire the scheduled function.
+  `netlify functions:invoke scheduled-ingest` to fire the schedule by hand.
 
 Categorization is retried on the next ingest run for any email that failed
 (errors are stored per-email and shown on the email page).

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { addSource, deleteSource, setSourceActive, updateSource } from "@/lib/db";
 import { runIngest } from "@/lib/ingest";
+import { triggerBackgroundIngest } from "@/lib/trigger-ingest";
 import { importFeedbinSources } from "@/lib/feedbin";
 
 export async function addSourceAction(formData: FormData) {
@@ -92,6 +93,20 @@ export async function toggleSourceAction(formData: FormData) {
 }
 
 export async function ingestNowAction() {
+  // On Netlify, hand off to the ingest-background function (15-minute
+  // limit) — a direct run here could hit the serverless timeout with many
+  // feeds. Outside Netlify (npm run dev, CLI), run directly.
+  if (await triggerBackgroundIngest()) {
+    revalidatePath("/");
+    revalidatePath("/sources");
+    redirect(
+      "/sources?ok=" +
+        encodeURIComponent(
+          "Ingest started in the background — refresh this page in a minute or two to see new fetch results."
+        )
+    );
+  }
+
   let report;
   try {
     report = await runIngest();
