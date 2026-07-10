@@ -1,45 +1,52 @@
-# PoliticalMonitor — Political Email Archive
+# PoliticalMonitor — Reform UK Emails & Tweets Archive
 
-A website that ingests ATOM feeds of incoming political emails, categorizes
-them with DeepSeek (via OpenRouter), and publishes them as a searchable,
-filterable archive of emails from candidates and politicians.
+A website that tracks **UK politicians from a focus party (Reform UK by
+default)** across two channels — their **email lists** and their **X/Twitter
+accounts** — categorizes everything with DeepSeek (via OpenRouter) against a
+UK policy taxonomy, and publishes it as a searchable, filterable archive.
 
 Built for Netlify: the site runs on Netlify's Next.js runtime, the archive is
 stored in **Netlify DB** (managed Postgres, powered by Neon) with a full-text
-search index, and a Netlify **scheduled function** pulls new emails every
+search index, and a Netlify **scheduled function** pulls new content every
 30 minutes.
 
 ## How it works
 
 ```
-campaign mailing list ──► email-to-ATOM bridge ──► ingester ──► Netlify DB ──► web feed
-     (subscribe)         (Kill the Newsletter!)      │          (Postgres +
-                                                     │           full-text search)
-                                                     └──► DeepSeek via OpenRouter
-                                                          (email type, policy topics,
-                                                           summary, fundraising ask)
+mailing lists ──► Feedbin (@feedb.in) ─┐
+                                       ├──► ingester ──► Netlify DB ──► web feed
+X accounts ─────► Nitter RSS ──────────┘       │        (Postgres +
+                  (original tweets only)       │         full-text search)
+                                               └──► DeepSeek via OpenRouter
+                                                    (UK policy topics, email type,
+                                                     summary, fundraising ask)
 ```
 
-1. **Subscribe** to a candidate's mailing list using your
-   [Feedbin](https://feedbin.com) email address (found in Feedbin settings;
-   you can create custom `@feedb.in` addresses per topic). Every sender
-   becomes its own feed inside your Feedbin account. (Public ATOM/RSS feed
-   URLs, e.g. from Kill the Newsletter!, are also still supported.)
-2. **Import** — click "Import feeds from Feedbin" on the **Sources** page to
-   create a source per newsletter, then use **Edit** to tag each with
-   candidate, party, office, and state.
-3. **Ingest** — every 30 minutes (or on demand) the app pulls new entries for
-   each active source via the Feedbin API (or by fetching the ATOM/RSS URL),
-   deduplicated by entry ID.
-4. **Categorize** — each new email is sent to DeepSeek through the OpenRouter
+1. **Emails** — subscribe to each politician's mailing list using your
+   [Feedbin](https://feedbin.com) email address (custom `@feedb.in`
+   addresses per person work well). Every sender becomes its own feed in
+   Feedbin; click "Import feeds from Feedbin" on the **Sources** page.
+   Public ATOM/RSS feed URLs are also supported.
+2. **Tweets** — add each politician's X account as a source (just paste
+   `@handle` or their x.com URL); the app reads their timeline through a
+   [Nitter](https://github.com/zedeus/nitter) instance's RSS.
+   **Only original tweets are archived** — retweets/reposts ("RT by …"),
+   replies ("R to …"), and items whose author isn't the account holder are
+   filtered out.
+3. **Tag** each source with person, party (defaults to the focus party),
+   role, and constituency via **Edit**.
+4. **Ingest** — every 30 minutes (or on demand) the app pulls new entries
+   for each active source, deduplicated by entry ID.
+5. **Categorize** — each new item is sent to DeepSeek through the OpenRouter
    API, which assigns:
-   - an **email type** (fundraising, event, volunteer, survey/petition,
-     newsletter, endorsement, attack/contrast, GOTV, merchandise, thank-you)
-   - up to four **policy topics** from a fixed 24-topic taxonomy
-     (Healthcare, Immigration & Border, Climate & Energy, …)
+   - up to four **UK policy topics** from a fixed 24-topic taxonomy
+     (Immigration & Small Boats, Net Zero & Energy, NHS & Social Care,
+     Brexit & EU Relations, …)
+   - an **email type** for emails (fundraising, event, survey/petition,
+     newsletter, attack/contrast, …) — tweets are labelled as tweets
    - a neutral one-line **summary**
    - a **fundraising-ask** flag
-5. **Browse & search** — the public feed supports Postgres full-text search
+6. **Browse & search** — the public feed supports Postgres full-text search
    (subject, summary, and body, weighted) plus filtering by topic, type,
    party, and source, with newest/oldest sorting and pagination. Full emails
    render with sanitized HTML.
@@ -91,6 +98,8 @@ Environment variables (see `.env.example`):
 | --- | --- |
 | `ADMIN_PASSWORD` | Password for the admin area (managing sources, deleting emails). Unset = admin features are open. |
 | `FEEDBIN_EMAIL` / `FEEDBIN_PASSWORD` | Feedbin login, used to import newsletter feeds and ingest their emails via the Feedbin API. |
+| `NITTER_BASE_URL` | Nitter instance for X timelines (default `https://nitter.net`; a self-hosted instance is much more reliable). |
+| `FOCUS_PARTY` | Party the site focuses on (default `Reform UK`). |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |
 | `DATABASE_URL` | Fallback Postgres URL for local dev / other hosts. |

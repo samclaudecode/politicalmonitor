@@ -20,6 +20,7 @@ interface FeedbinEntry {
   id: number;
   feed_id: number;
   title: string | null;
+  url: string | null;
   author: string | null;
   content: string | null;
   summary: string | null;
@@ -92,6 +93,7 @@ export async function fetchFeedbinEntries(
         publishedAt: new Date(e.published || e.created_at).toISOString(),
         html,
         text: html ? stripHtml(html) : e.summary || null,
+        link: e.url || null,
       });
     }
     if (batch.length < 100) break;

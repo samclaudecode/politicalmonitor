@@ -282,6 +282,10 @@ a.chip:hover {
   background: #eaf6ec;
   color: #1e7a34;
 }
+.chip-tweet {
+  background: #e8f0fe;
+  color: #1a3d7c;
+}
 .chip-pending {
   background: transparent;
   border: 1px dashed var(--ink-faint);
@@ -296,12 +300,17 @@ a.chip:hover {
   color: #fff;
   letter-spacing: 0.03em;
 }
-.party-Democratic { background: var(--dem); }
-.party-Republican { background: var(--gop); }
-.party-Independent { background: var(--ind); }
-.party-Libertarian { background: #b45309; }
-.party-Green { background: #15803d; }
-.party-Other, .party-Unknown { background: var(--other-party); }
+/* UK party colours */
+.party-reform-uk { background: #12b6cf; color: #06323a; }
+.party-conservative { background: #0087dc; }
+.party-labour { background: #e4003b; }
+.party-liberal-democrat { background: #faa61a; color: #4a3000; }
+.party-green { background: #02a95b; }
+.party-snp { background: #fdf38e; color: #5c5200; }
+.party-plaid-cymru { background: #005b54; }
+.party-dup { background: #d46a4c; }
+.party-independent { background: var(--ind); }
+.party-other, .party-unknown { background: var(--other-party); }
 
 /* Pagination */
 .pagination {

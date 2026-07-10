@@ -45,12 +45,12 @@ export default async function EditSourcePage({
               <input id="name" name="name" required defaultValue={source.name} />
             </div>
             <div>
-              <label htmlFor="candidate">Candidate / politician</label>
+              <label htmlFor="candidate">Person / MP</label>
               <input
                 id="candidate"
                 name="candidate"
                 defaultValue={source.candidate ?? ""}
-                placeholder="Jane Smith"
+                placeholder="Nigel Farage"
               />
             </div>
             <div>
@@ -64,16 +64,16 @@ export default async function EditSourcePage({
               </select>
             </div>
             <div>
-              <label htmlFor="office">Office sought / held</label>
+              <label htmlFor="office">Role</label>
               <input
                 id="office"
                 name="office"
                 defaultValue={source.office ?? ""}
-                placeholder="U.S. Senate"
+                placeholder="MP / Party Leader"
               />
             </div>
             <div>
-              <label htmlFor="state">State</label>
+              <label htmlFor="state">Constituency</label>
               <input
                 id="state"
                 name="state"

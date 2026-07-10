@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isAdmin, isAuthConfigured } from "@/lib/auth";
 import { listSources, stats } from "@/lib/db";
-import { PARTIES } from "@/lib/taxonomy";
+import { PARTIES, focusParty, partySlug } from "@/lib/taxonomy";
 import { isCategorizationConfigured } from "@/lib/categorize";
 import { isFeedbinConfigured, feedbinFeedId } from "@/lib/feedbin";
 import DbSetupNotice from "../components/DbSetupNotice";
@@ -62,13 +62,11 @@ export default async function SourcesPage({
         ) : null}
       </div>
       <p className="page-sub">
-        Each candidate or politician&apos;s email stream is one source. Connect{" "}
-        <a href="https://feedbin.com" target="_blank" rel="noopener noreferrer">
-          Feedbin
-        </a>{" "}
-        (recommended — subscribe to campaign lists with your{" "}
-        <code>@feedb.in</code> address and import below), or register a public
-        ATOM/RSS feed URL directly.
+        Track each {focusParty()} politician through two kinds of source:
+        their <strong>email list</strong> (subscribe with your Feedbin{" "}
+        <code>@feedb.in</code> address and import below, or register an
+        ATOM/RSS URL) and their <strong>X account</strong> via Nitter — only
+        original tweets are archived; reposts and replies are filtered out.
       </p>
 
       {ok ? <div className="notice notice-ok">{ok}</div> : null}
@@ -135,15 +133,22 @@ export default async function SourcesPage({
         <h2>Add a source manually</h2>
         <form action={addSourceAction}>
           <div className="form-grid">
+            <div>
+              <label htmlFor="kind">Source type *</label>
+              <select id="kind" name="kind" defaultValue="email">
+                <option value="email">Email feed (ATOM/RSS or Feedbin)</option>
+                <option value="twitter">X / Twitter (via Nitter)</option>
+              </select>
+            </div>
             <div className="full">
               <label htmlFor="feed_url">
-                ATOM/RSS feed URL (or feedbin:&lt;feed_id&gt;) *
+                Feed URL — or X handle for X sources *
               </label>
               <input
                 id="feed_url"
                 name="feed_url"
                 required
-                placeholder="https://example.com/feed.xml or feedbin:123456"
+                placeholder="https://example.com/feed.xml · feedbin:123456 · @Nigel_Farage"
               />
             </div>
             <div>
@@ -152,16 +157,16 @@ export default async function SourcesPage({
                 id="name"
                 name="name"
                 required
-                placeholder="Smith for Senate"
+                placeholder="Nigel Farage — X"
               />
             </div>
             <div>
-              <label htmlFor="candidate">Candidate / politician</label>
-              <input id="candidate" name="candidate" placeholder="Jane Smith" />
+              <label htmlFor="candidate">Person / MP</label>
+              <input id="candidate" name="candidate" placeholder="Nigel Farage" />
             </div>
             <div>
               <label htmlFor="party">Party</label>
-              <select id="party" name="party" defaultValue="Unknown">
+              <select id="party" name="party" defaultValue={focusParty()}>
                 {PARTIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -170,12 +175,12 @@ export default async function SourcesPage({
               </select>
             </div>
             <div>
-              <label htmlFor="office">Office sought / held</label>
-              <input id="office" name="office" placeholder="U.S. Senate" />
+              <label htmlFor="office">Role</label>
+              <input id="office" name="office" placeholder="MP / Party Leader" />
             </div>
             <div>
-              <label htmlFor="state">State</label>
-              <input id="state" name="state" placeholder="PA" maxLength={40} />
+              <label htmlFor="state">Constituency</label>
+              <input id="state" name="state" placeholder="Clacton" maxLength={40} />
             </div>
           </div>
           <button type="submit">Add source</button>
@@ -218,12 +223,23 @@ export default async function SourcesPage({
                     ) : null}
                   </td>
                   <td>
-                    <span className={`party-badge party-${src.party}`}>
+                    <span className={`party-badge party-${partySlug(src.party)}`}>
                       {src.party}
                     </span>
                   </td>
                   <td style={{ maxWidth: 260, wordBreak: "break-all" }}>
-                    {feedbinFeedId(src.feed_url) !== null ? (
+                    {src.kind === "twitter" ? (
+                      <>
+                        <span className="chip chip-tweet">𝕏 Nitter</span>{" "}
+                        <a
+                          href={src.feed_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {src.feed_url}
+                        </a>
+                      </>
+                    ) : feedbinFeedId(src.feed_url) !== null ? (
                       <>
                         <span className="chip chip-type">Feedbin</span>{" "}
                         <code style={{ fontSize: "0.8rem" }}>{src.feed_url}</code>

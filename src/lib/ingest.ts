@@ -1,5 +1,6 @@
 import { parseFeed, type FeedEntry } from "./atom";
 import { feedbinFeedId, fetchFeedbinEntries } from "./feedbin";
+import { handleFromNitterUrl, originalTweets, tweetSubject, toXUrl } from "./nitter";
 import {
   listSources,
   getSource,
@@ -33,6 +34,7 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
   try {
     let entries: FeedEntry[];
     let feedTitle: string | null = null;
+    const isTwitter = source.kind === "twitter";
 
     const feedbinId = feedbinFeedId(source.feed_url);
     if (feedbinId !== null) {
@@ -51,13 +53,25 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
       entries = feed.entries;
       feedTitle = feed.title;
     }
+
+    if (isTwitter) {
+      const handle = handleFromNitterUrl(source.feed_url);
+      if (!handle) {
+        throw new Error(
+          `Cannot determine X handle from feed URL (expected <nitter>/<handle>/rss): ${source.feed_url}`
+        );
+      }
+      entries = originalTweets(entries, handle);
+    }
     result.fetched = true;
 
     for (const entry of entries) {
       const id = await insertEmail({
         source_id: source.id,
         guid: entry.guid,
-        subject: entry.title,
+        kind: isTwitter ? "tweet" : "email",
+        link_url: isTwitter ? toXUrl(entry.link) : entry.link,
+        subject: isTwitter ? tweetSubject(entry) : entry.title,
         sender_name: entry.authorName ?? feedTitle,
         sender_email: entry.authorEmail,
         received_at: entry.publishedAt,

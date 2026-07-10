@@ -6,6 +6,7 @@ import { addSource, deleteSource, setSourceActive, updateSource } from "@/lib/db
 import { runIngest } from "@/lib/ingest";
 import { triggerBackgroundIngest } from "@/lib/trigger-ingest";
 import { importFeedbinSources } from "@/lib/feedbin";
+import { normalizeTwitterInput } from "@/lib/nitter";
 import { isAdmin } from "@/lib/auth";
 
 async function requireAdmin() {
@@ -14,20 +15,35 @@ async function requireAdmin() {
 
 export async function addSourceAction(formData: FormData) {
   await requireAdmin();
-  const feed_url = String(formData.get("feed_url") || "").trim();
+  let feed_url = String(formData.get("feed_url") || "").trim();
   const name = String(formData.get("name") || "").trim();
+  const kind = String(formData.get("kind")) === "twitter" ? "twitter" : "email";
   if (!feed_url || !name) {
     redirect("/sources?error=" + encodeURIComponent("Feed URL and name are required"));
   }
-  try {
-    new URL(feed_url);
-  } catch {
-    redirect("/sources?error=" + encodeURIComponent("Feed URL is not a valid URL"));
+  if (kind === "twitter") {
+    const normalized = normalizeTwitterInput(feed_url);
+    if (!normalized) {
+      redirect(
+        "/sources?error=" +
+          encodeURIComponent(
+            "Could not parse the X handle — enter e.g. @Nigel_Farage, an x.com profile URL, or a Nitter RSS URL"
+          )
+      );
+    }
+    feed_url = normalized;
+  } else {
+    try {
+      new URL(feed_url);
+    } catch {
+      redirect("/sources?error=" + encodeURIComponent("Feed URL is not a valid URL"));
+    }
   }
   try {
     await addSource({
       feed_url,
       name,
+      kind,
       candidate: String(formData.get("candidate") || "").trim() || undefined,
       party: String(formData.get("party") || "").trim() || undefined,
       office: String(formData.get("office") || "").trim() || undefined,

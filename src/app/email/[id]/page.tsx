@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import sanitizeHtml from "sanitize-html";
 import { getEmail } from "@/lib/db";
-import { emailTypeLabel } from "@/lib/taxonomy";
+import { emailTypeLabel, partySlug } from "@/lib/taxonomy";
 import { isAdmin } from "@/lib/auth";
 import DbSetupNotice from "../../components/DbSetupNotice";
 import { deleteEmailAction } from "../actions";
@@ -81,25 +81,42 @@ export default async function EmailPage({
       <header className="email-detail-header">
         <h1>{email.subject}</h1>
         <p className="email-detail-meta">
-          <span className={`party-badge party-${email.party}`}>
+          <span className={`party-badge party-${partySlug(email.party)}`}>
             {email.party === "Unknown" ? "?" : email.party}
           </span>{" "}
-          From <strong>{email.sender_name || email.source_name}</strong>
-          {email.sender_email ? ` <${email.sender_email}>` : ""} · {received}
+          {email.kind === "tweet" ? "Posted by" : "From"}{" "}
+          <strong>{email.candidate || email.sender_name || email.source_name}</strong>
+          {email.kind !== "tweet" && email.sender_email
+            ? ` <${email.sender_email}>`
+            : ""}{" "}
+          · {received}
           {email.office || email.state ? (
             <> · {[email.office, email.state].filter(Boolean).join(", ")}</>
           ) : null}
+          {email.kind === "tweet" && email.link_url ? (
+            <>
+              {" · "}
+              <a href={email.link_url} target="_blank" rel="noopener noreferrer">
+                View on X ↗
+              </a>
+            </>
+          ) : null}
         </p>
         <div className="chip-row">
-          {email.email_type ? (
+          {email.kind === "tweet" ? (
+            <Link className="chip chip-tweet" href="/?kind=tweet">
+              𝕏 Tweet
+            </Link>
+          ) : email.email_type ? (
             <Link className="chip chip-type" href={`/?type=${email.email_type}`}>
               {emailTypeLabel(email.email_type)}
             </Link>
-          ) : (
+          ) : null}
+          {!email.categorized_at ? (
             <span className="chip chip-pending">awaiting categorization</span>
-          )}
+          ) : null}
           {email.fundraising_ask ? (
-            <span className="chip chip-money">$ fundraising ask</span>
+            <span className="chip chip-money">£ fundraising ask</span>
           ) : null}
           {email.topics.map((t) => (
             <Link

@@ -8,6 +8,7 @@ export interface FeedEntry {
   publishedAt: string; // ISO 8601
   html: string | null;
   text: string | null;
+  link: string | null;
 }
 
 export interface ParsedFeed {
@@ -39,6 +40,19 @@ function textOf(node: unknown): string {
     // CDATA handled by fast-xml-parser as #text already; fall through.
   }
   return "";
+}
+
+function atomLink(node: unknown): string | null {
+  for (const l of asArray(node)) {
+    if (l && typeof l === "object") {
+      const o = l as Record<string, unknown>;
+      const rel = o["@_rel"];
+      if ((!rel || rel === "alternate") && typeof o["@_href"] === "string") {
+        return o["@_href"];
+      }
+    }
+  }
+  return null;
 }
 
 function contentType(node: unknown): string {
@@ -108,6 +122,7 @@ export function parseFeed(xml: string): ParsedFeed {
         ),
         html: isHtml ? body : null,
         text: isHtml ? stripHtml(body) : body || null,
+        link: atomLink(entry.link),
       };
     });
     return { title: textOf(feed.title) || null, entries };
@@ -131,6 +146,7 @@ export function parseFeed(xml: string): ParsedFeed {
         publishedAt: toIso(textOf(item.pubDate) || undefined, now),
         html: body || null,
         text: body ? stripHtml(body) : null,
+        link: textOf(item.link) || null,
       };
     });
     return { title: textOf(channel.title) || null, entries };

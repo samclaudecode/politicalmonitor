@@ -16,12 +16,19 @@ export interface CategorizationResult {
   fundraising_ask: boolean;
 }
 
-const SYSTEM_PROMPT = `You are an analyst cataloguing political campaign and legislative emails for a public research archive.
+const EMAIL_SYSTEM_PROMPT = `You are an analyst cataloguing emails from UK politicians and parties for a public research archive.
 Given one email, respond with ONLY a JSON object (no markdown fences, no commentary) with exactly these keys:
 - "email_type": one of ${JSON.stringify(EMAIL_TYPES)}
 - "policy_topics": array of 0-4 strings, each EXACTLY one of ${JSON.stringify(POLICY_TOPICS)}. Only include topics the email substantively discusses; an email that is purely a donation ask with no policy content gets [].
 - "summary": one or two neutral sentences describing what the email says and asks for.
 - "fundraising_ask": true if the email asks for money anywhere, else false.`;
+
+const TWEET_SYSTEM_PROMPT = `You are an analyst cataloguing tweets (X posts) by UK politicians for a public research archive.
+Given one tweet, respond with ONLY a JSON object (no markdown fences, no commentary) with exactly these keys:
+- "email_type": always the string "other" (ignored for tweets).
+- "policy_topics": array of 0-3 strings, each EXACTLY one of ${JSON.stringify(POLICY_TOPICS)}. Only include topics the tweet substantively engages with; personal or purely rhetorical tweets with no policy content get [].
+- "summary": one neutral sentence describing what the tweet says or claims.
+- "fundraising_ask": true if the tweet asks for money/donations, else false.`;
 
 export function isCategorizationConfigured(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY);
@@ -30,7 +37,8 @@ export function isCategorizationConfigured(): boolean {
 export async function categorizeEmailContent(
   subject: string,
   senderName: string | null,
-  body: string
+  body: string,
+  kind: "email" | "tweet" = "email"
 ): Promise<CategorizationResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -38,12 +46,15 @@ export async function categorizeEmailContent(
   }
   const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
 
-  const userContent = [
-    `From: ${senderName || "unknown"}`,
-    `Subject: ${subject}`,
-    "",
-    body.slice(0, 6000),
-  ].join("\n");
+  const userContent =
+    kind === "tweet"
+      ? [`Author: ${senderName || "unknown"}`, "", body.slice(0, 2000) || subject].join("\n")
+      : [
+          `From: ${senderName || "unknown"}`,
+          `Subject: ${subject}`,
+          "",
+          body.slice(0, 6000),
+        ].join("\n");
 
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
@@ -58,7 +69,10 @@ export async function categorizeEmailContent(
       temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        {
+          role: "system",
+          content: kind === "tweet" ? TWEET_SYSTEM_PROMPT : EMAIL_SYSTEM_PROMPT,
+        },
         { role: "user", content: userContent },
       ],
     }),
@@ -116,12 +130,18 @@ export function parseModelResponse(raw: string): CategorizationResult {
 
 export async function categorizeEmail(email: EmailRow): Promise<void> {
   const body = email.text_body || email.html_body || "";
+  const isTweet = email.kind === "tweet";
   const result = await categorizeEmailContent(
     email.subject,
     email.sender_name,
-    body
+    body,
+    isTweet ? "tweet" : "email"
   );
-  await saveCategorization(email.id, result);
+  await saveCategorization(email.id, {
+    ...result,
+    // Tweets keep email_type NULL — the feed's "Tweet" chip comes from kind.
+    email_type: isTweet ? null : result.email_type,
+  });
 }
 
 export interface CategorizeBatchResult {

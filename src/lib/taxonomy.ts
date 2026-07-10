@@ -1,6 +1,15 @@
 // Fixed taxonomies used across ingestion, categorization and the UI.
+// The site is focused on UK politics (Reform UK by default — see FOCUS_PARTY).
 
-// High-level "what kind of email is this" buckets.
+export function focusParty(): string {
+  return process.env.FOCUS_PARTY || "Reform UK";
+}
+
+// What kind of content an archived item is.
+export const ITEM_KINDS = ["email", "tweet"] as const;
+export type ItemKind = (typeof ITEM_KINDS)[number];
+
+// High-level "what kind of email is this" buckets (emails only).
 export const EMAIL_TYPES = [
   "fundraising",
   "event",
@@ -17,45 +26,55 @@ export const EMAIL_TYPES = [
 
 export type EmailType = (typeof EMAIL_TYPES)[number];
 
-// Policy topic taxonomy the model is asked to pick from.
+// UK policy topic taxonomy the model is asked to pick from.
 export const POLICY_TOPICS = [
-  "Economy & Jobs",
-  "Taxes & Budget",
-  "Healthcare",
-  "Abortion & Reproductive Rights",
-  "Immigration & Border",
-  "Climate & Energy",
-  "Environment",
-  "Education",
-  "Guns & Public Safety",
+  "Immigration & Small Boats",
+  "Economy & Growth",
+  "Tax & Spending",
+  "NHS & Social Care",
+  "Net Zero & Energy",
   "Crime & Policing",
-  "Democracy & Voting Rights",
-  "Foreign Policy & National Security",
-  "Veterans & Military",
-  "Social Security & Medicare",
-  "Housing",
-  "Labor & Unions",
-  "Civil Rights & Equality",
-  "LGBTQ+ Rights",
-  "Technology & Privacy",
-  "Agriculture & Rural Issues",
-  "Infrastructure & Transportation",
-  "Judiciary & Courts",
-  "Government Ethics & Corruption",
-  "Cost of Living & Inflation",
+  "Brexit & EU Relations",
+  "Housing & Planning",
+  "Education & Schools",
+  "Welfare & Benefits",
+  "Defence & Security",
+  "Foreign Affairs",
+  "Cost of Living",
+  "Pensions",
+  "Transport & Infrastructure",
+  "Farming & Fishing",
+  "Civil Liberties & Free Speech",
+  "Devolution & the Union",
+  "Local Government",
+  "Elections & Democracy",
+  "Government Waste & Reform",
+  "Sovereignty & Constitution",
+  "Media & Culture",
+  "Technology & Online Safety",
 ] as const;
 
 export type PolicyTopic = (typeof POLICY_TOPICS)[number];
 
+// UK parties, focus party first (default selection for new people).
 export const PARTIES = [
-  "Democratic",
-  "Republican",
-  "Independent",
-  "Libertarian",
+  "Reform UK",
+  "Conservative",
+  "Labour",
+  "Liberal Democrat",
   "Green",
+  "SNP",
+  "Plaid Cymru",
+  "DUP",
+  "Independent",
   "Other",
   "Unknown",
 ] as const;
+
+/** CSS-safe class fragment for a party, e.g. "Reform UK" → "reform-uk". */
+export function partySlug(party: string): string {
+  return party.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
 
 export const EMAIL_TYPE_LABELS: Record<EmailType, string> = {
   fundraising: "Fundraising",

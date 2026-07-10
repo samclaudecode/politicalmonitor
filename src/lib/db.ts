@@ -113,6 +113,11 @@ async function migrate(p: Pool): Promise<void> {
       PRIMARY KEY (email_id, topic_id)
     );
 
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'email';
+    ALTER TABLE emails ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'email';
+    ALTER TABLE emails ADD COLUMN IF NOT EXISTS link_url TEXT;
+
+    CREATE INDEX IF NOT EXISTS idx_emails_kind ON emails (kind);
     CREATE INDEX IF NOT EXISTS idx_emails_received_at ON emails (received_at DESC);
     CREATE INDEX IF NOT EXISTS idx_emails_source ON emails (source_id);
     CREATE INDEX IF NOT EXISTS idx_emails_type ON emails (email_type);
@@ -126,6 +131,7 @@ async function migrate(p: Pool): Promise<void> {
 export interface Source {
   id: number;
   feed_url: string;
+  kind: string; // 'email' | 'twitter'
   name: string;
   candidate: string | null;
   party: string;
@@ -141,6 +147,8 @@ export interface EmailRow {
   id: number;
   source_id: number;
   guid: string;
+  kind: string; // 'email' | 'tweet'
+  link_url: string | null;
   subject: string;
   sender_name: string | null;
   sender_email: string | null;
@@ -164,7 +172,7 @@ export interface EmailListItem extends EmailRow {
   topics: string[];
 }
 
-const EMAIL_COLUMNS = `e.id, e.source_id, e.guid, e.subject, e.sender_name, e.sender_email,
+const EMAIL_COLUMNS = `e.id, e.source_id, e.guid, e.kind, e.link_url, e.subject, e.sender_name, e.sender_email,
   e.received_at, e.html_body, e.text_body, e.summary, e.email_type,
   e.fundraising_ask, e.categorized_at, e.categorization_error, e.created_at`;
 
@@ -192,6 +200,7 @@ export async function getSource(id: number): Promise<Source | undefined> {
 export async function addSource(input: {
   feed_url: string;
   name: string;
+  kind?: string;
   candidate?: string;
   party?: string;
   office?: string;
@@ -199,10 +208,11 @@ export async function addSource(input: {
 }): Promise<number> {
   const p = await db();
   const res = await p.query(
-    `INSERT INTO sources (feed_url, name, candidate, party, office, state)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO sources (feed_url, kind, name, candidate, party, office, state)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [
       input.feed_url,
+      input.kind === "twitter" ? "twitter" : "email",
       input.name,
       input.candidate || null,
       input.party || "Unknown",
@@ -262,6 +272,8 @@ export async function recordFetch(id: number, status: string): Promise<void> {
 export async function insertEmail(input: {
   source_id: number;
   guid: string;
+  kind?: string;
+  link_url?: string | null;
   subject: string;
   sender_name?: string | null;
   sender_email?: string | null;
@@ -272,13 +284,15 @@ export async function insertEmail(input: {
   const p = await db();
   const res = await p.query(
     `INSERT INTO emails
-       (source_id, guid, subject, sender_name, sender_email, received_at, html_body, text_body)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (source_id, guid, kind, link_url, subject, sender_name, sender_email, received_at, html_body, text_body)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (source_id, guid) DO NOTHING
      RETURNING id`,
     [
       input.source_id,
       input.guid,
+      input.kind === "tweet" ? "tweet" : "email",
+      input.link_url ?? null,
       input.subject,
       input.sender_name ?? null,
       input.sender_email ?? null,
@@ -305,7 +319,7 @@ export async function getEmail(id: number): Promise<EmailListItem | undefined> {
 export async function saveCategorization(
   emailId: number,
   result: {
-    email_type: string;
+    email_type: string | null; // null for tweets — the type chip comes from kind
     summary: string;
     fundraising_ask: boolean;
     topics: string[];
@@ -379,6 +393,7 @@ export interface FeedFilters {
   q?: string;
   topic?: string;
   type?: string;
+  kind?: string;
   party?: string;
   source?: number;
   sort?: "newest" | "oldest";
@@ -413,6 +428,10 @@ export async function queryEmails(filters: FeedFilters): Promise<{
   if (filters.type) {
     params.push(filters.type);
     where.push(`e.email_type = $${params.length}`);
+  }
+  if (filters.kind) {
+    params.push(filters.kind);
+    where.push(`e.kind = $${params.length}`);
   }
   if (filters.party) {
     params.push(filters.party);

@@ -7,7 +7,7 @@ import {
   stats,
   type EmailListItem,
 } from "@/lib/db";
-import { PARTIES, emailTypeLabel } from "@/lib/taxonomy";
+import { PARTIES, emailTypeLabel, focusParty, partySlug } from "@/lib/taxonomy";
 import DbSetupNotice from "./components/DbSetupNotice";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +41,7 @@ function buildQuery(
 }
 
 function EmailCard({ email }: { email: EmailListItem }) {
+  const isTweet = email.kind === "tweet";
   const senderLine = [
     email.candidate || email.source_name,
     email.office,
@@ -57,25 +58,32 @@ function EmailCard({ email }: { email: EmailListItem }) {
         <span className="email-date">{formatDate(email.received_at)}</span>
       </div>
       <p className="email-sender">
-        <span className={`party-badge party-${email.party}`}>
-          {email.party === "Unknown" ? "?" : email.party.slice(0, 3).toUpperCase()}
+        <span className={`party-badge party-${partySlug(email.party)}`}>
+          {email.party === "Unknown" ? "?" : email.party}
         </span>{" "}
         {senderLine}
-        {email.sender_email ? (
+        {!isTweet && email.sender_email ? (
           <span style={{ color: "var(--ink-faint)" }}> · {email.sender_email}</span>
         ) : null}
       </p>
-      {email.summary ? <p className="email-summary">{email.summary}</p> : null}
+      {email.summary && !isTweet ? (
+        <p className="email-summary">{email.summary}</p>
+      ) : null}
       <div className="chip-row">
-        {email.email_type ? (
+        {isTweet ? (
+          <Link className="chip chip-tweet" href="/?kind=tweet">
+            𝕏 Tweet
+          </Link>
+        ) : email.email_type ? (
           <Link className="chip chip-type" href={`/?type=${email.email_type}`}>
             {emailTypeLabel(email.email_type)}
           </Link>
-        ) : (
+        ) : null}
+        {!email.categorized_at ? (
           <span className="chip chip-pending">awaiting categorization</span>
-        )}
+        ) : null}
         {email.fundraising_ask ? (
-          <span className="chip chip-money">$ fundraising ask</span>
+          <span className="chip chip-money">£ fundraising ask</span>
         ) : null}
         {email.topics.map((t) => (
           <Link key={t} className="chip" href={`/?topic=${encodeURIComponent(t)}`}>
@@ -93,10 +101,12 @@ export default async function FeedPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
+  const kindParam = first(sp.kind);
   const filters = {
     q: first(sp.q),
     topic: first(sp.topic),
     type: first(sp.type),
+    kind: kindParam === "email" || kindParam === "tweet" ? kindParam : "",
     party: first(sp.party),
     source: first(sp.source),
     sort: first(sp.sort) === "oldest" ? ("oldest" as const) : ("newest" as const),
@@ -109,6 +119,7 @@ export default async function FeedPage({
       q: filters.q || undefined,
       topic: filters.topic || undefined,
       type: filters.type || undefined,
+      kind: filters.kind || undefined,
       party: filters.party || undefined,
       source: filters.source ? parseInt(filters.source, 10) : undefined,
       sort: filters.sort,
@@ -129,6 +140,7 @@ export default async function FeedPage({
     q: filters.q,
     topic: filters.topic,
     type: filters.type,
+    kind: filters.kind,
     party: filters.party,
     source: filters.source,
     sort: filters.sort === "oldest" ? "oldest" : "",
@@ -136,10 +148,11 @@ export default async function FeedPage({
 
   return (
     <>
-      <h1 className="page-title">The Archive</h1>
+      <h1 className="page-title">The {focusParty()} Monitor</h1>
       <p className="page-sub">
-        {s.emails.toLocaleString()} political emails from {s.sources} sources,
-        categorized by policy topic.
+        {s.emails.toLocaleString()} emails and original tweets from{" "}
+        {s.sources} feeds tracking {focusParty()} politicians, categorized by
+        policy topic.
       </p>
 
       <form className="filter-bar" method="get" action="/">
@@ -149,9 +162,17 @@ export default async function FeedPage({
             type="text"
             id="q"
             name="q"
-            placeholder="Subject, body, candidate…"
+            placeholder="Subject, tweet, person…"
             defaultValue={filters.q}
           />
+        </div>
+        <div className="filter-field">
+          <label htmlFor="kind">Content</label>
+          <select id="kind" name="kind" defaultValue={filters.kind}>
+            <option value="">Emails & tweets</option>
+            <option value="email">Emails only</option>
+            <option value="tweet">Tweets only</option>
+          </select>
         </div>
         <div className="filter-field">
           <label htmlFor="topic">Policy topic</label>
@@ -213,7 +234,7 @@ export default async function FeedPage({
       </form>
 
       <p className="result-meta">
-        {total.toLocaleString()} email{total === 1 ? "" : "s"} match
+        {total.toLocaleString()} item{total === 1 ? "" : "s"} match
         {total === 1 ? "es" : ""}
         {filters.topic ? ` topic “${filters.topic}”` : ""}
         {filters.q ? ` search “${filters.q}”` : ""}.

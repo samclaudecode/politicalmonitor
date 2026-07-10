@@ -3,9 +3,9 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Political Email Archive",
+  title: "PoliticalMonitor — Reform UK",
   description:
-    "A searchable archive of political campaign and legislative emails, categorized by policy topic.",
+    "A searchable archive of emails and original tweets from Reform UK politicians, categorized by policy topic.",
 };
 
 export default function RootLayout({
@@ -22,7 +22,7 @@ export default function RootLayout({
               <span className="brand-mark">PM</span>
               <span>
                 Political<strong>Monitor</strong>
-                <small>email archive</small>
+                <small>Reform UK · emails & tweets</small>
               </span>
             </Link>
             <nav className="site-nav">
@@ -35,8 +35,9 @@ export default function RootLayout({
         <main className="container">{children}</main>
         <footer className="site-footer">
           <div className="container">
-            Emails are ingested via Feedbin and ATOM feeds, then categorized by
-            policy topic with DeepSeek via OpenRouter.
+            Emails are ingested via Feedbin/ATOM and original tweets via
+            Nitter, then categorized by UK policy topic with DeepSeek via
+            OpenRouter.
           </div>
         </footer>
       </body>
