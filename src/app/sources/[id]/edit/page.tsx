@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { isAdmin } from "@/lib/auth";
 import { getSource } from "@/lib/db";
 import { PARTIES } from "@/lib/taxonomy";
 import { updateSourceAction } from "../../actions";
@@ -12,6 +13,7 @@ export default async function EditSourcePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!(await isAdmin())) redirect("/admin/login");
   const { id } = await params;
   const sourceId = parseInt(id, 10);
   if (Number.isNaN(sourceId)) notFound();

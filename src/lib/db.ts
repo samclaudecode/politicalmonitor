@@ -344,6 +344,12 @@ export async function saveCategorization(
   }
 }
 
+export async function deleteEmail(id: number): Promise<boolean> {
+  const p = await db();
+  const res = await p.query("DELETE FROM emails WHERE id = $1", [id]);
+  return (res.rowCount ?? 0) > 0;
+}
+
 export async function saveCategorizationError(
   emailId: number,
   message: string

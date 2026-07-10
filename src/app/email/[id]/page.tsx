@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import sanitizeHtml from "sanitize-html";
 import { getEmail } from "@/lib/db";
 import { emailTypeLabel } from "@/lib/taxonomy";
+import { isAdmin } from "@/lib/auth";
 import DbSetupNotice from "../../components/DbSetupNotice";
+import { deleteEmailAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +50,7 @@ export default async function EmailPage({
     return <DbSetupNotice error={err} />;
   }
   if (!email) notFound();
+  const admin = await isAdmin();
 
   const received = new Date(email.received_at).toLocaleString("en-US", {
     dateStyle: "long",
@@ -56,9 +59,25 @@ export default async function EmailPage({
 
   return (
     <>
-      <p style={{ marginTop: 24 }}>
+      <div
+        style={{
+          marginTop: 24,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
         <Link href="/">← Back to feed</Link>
-      </p>
+        {admin ? (
+          <form action={deleteEmailAction}>
+            <input type="hidden" name="id" value={email.id} />
+            <button type="submit" className="btn-danger">
+              Delete this email
+            </button>
+          </form>
+        ) : null}
+      </div>
       <header className="email-detail-header">
         <h1>{email.subject}</h1>
         <p className="email-detail-meta">

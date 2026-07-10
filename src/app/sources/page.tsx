@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { isAdmin, isAuthConfigured } from "@/lib/auth";
 import { listSources, stats } from "@/lib/db";
 import { PARTIES } from "@/lib/taxonomy";
 import { isCategorizationConfigured } from "@/lib/categorize";
@@ -25,6 +27,7 @@ export default async function SourcesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  if (!(await isAdmin())) redirect("/admin/login");
   const sp = await searchParams;
   const ok = first(sp.ok);
   const error = first(sp.error);
@@ -40,7 +43,24 @@ export default async function SourcesPage({
 
   return (
     <>
-      <h1 className="page-title">Feed Sources</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <h1 className="page-title">Feed Sources</h1>
+        {isAuthConfigured() ? (
+          <form method="post" action="/api/admin/logout">
+            <button type="submit" className="btn-secondary btn-small">
+              Sign out
+            </button>
+          </form>
+        ) : null}
+      </div>
       <p className="page-sub">
         Each candidate or politician&apos;s email stream is one source. Connect{" "}
         <a href="https://feedbin.com" target="_blank" rel="noopener noreferrer">
@@ -53,6 +73,13 @@ export default async function SourcesPage({
 
       {ok ? <div className="notice notice-ok">{ok}</div> : null}
       {error ? <div className="notice">{error}</div> : null}
+      {!isAuthConfigured() ? (
+        <div className="notice">
+          <strong>This page is not password-protected.</strong> Set an{" "}
+          <code>ADMIN_PASSWORD</code> environment variable (and redeploy) to
+          require a sign-in for managing sources and deleting emails.
+        </div>
+      ) : null}
       {!aiReady ? (
         <div className="notice">
           <strong>OPENROUTER_API_KEY is not set.</strong> Emails will be

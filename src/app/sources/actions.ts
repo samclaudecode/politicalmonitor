@@ -6,8 +6,14 @@ import { addSource, deleteSource, setSourceActive, updateSource } from "@/lib/db
 import { runIngest } from "@/lib/ingest";
 import { triggerBackgroundIngest } from "@/lib/trigger-ingest";
 import { importFeedbinSources } from "@/lib/feedbin";
+import { isAdmin } from "@/lib/auth";
+
+async function requireAdmin() {
+  if (!(await isAdmin())) redirect("/admin/login");
+}
 
 export async function addSourceAction(formData: FormData) {
+  await requireAdmin();
   const feed_url = String(formData.get("feed_url") || "").trim();
   const name = String(formData.get("name") || "").trim();
   if (!feed_url || !name) {
@@ -39,6 +45,7 @@ export async function addSourceAction(formData: FormData) {
 }
 
 export async function updateSourceAction(formData: FormData) {
+  await requireAdmin();
   const id = parseInt(String(formData.get("id") || ""), 10);
   const name = String(formData.get("name") || "").trim();
   if (Number.isNaN(id) || !name) {
@@ -62,6 +69,7 @@ export async function updateSourceAction(formData: FormData) {
 }
 
 export async function importFeedbinAction() {
+  await requireAdmin();
   let result;
   try {
     result = await importFeedbinSources();
@@ -78,6 +86,7 @@ export async function importFeedbinAction() {
 }
 
 export async function deleteSourceAction(formData: FormData) {
+  await requireAdmin();
   const id = parseInt(String(formData.get("id") || ""), 10);
   if (!Number.isNaN(id)) await deleteSource(id);
   revalidatePath("/sources");
@@ -85,6 +94,7 @@ export async function deleteSourceAction(formData: FormData) {
 }
 
 export async function toggleSourceAction(formData: FormData) {
+  await requireAdmin();
   const id = parseInt(String(formData.get("id") || ""), 10);
   const active = String(formData.get("active")) === "1";
   if (!Number.isNaN(id)) await setSourceActive(id, active);
@@ -93,6 +103,7 @@ export async function toggleSourceAction(formData: FormData) {
 }
 
 export async function ingestNowAction() {
+  await requireAdmin();
   // On Netlify, hand off to the ingest-background function (15-minute
   // limit) — a direct run here could hit the serverless timeout with many
   // feeds. Outside Netlify (npm run dev, CLI), run directly.

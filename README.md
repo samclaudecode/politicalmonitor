@@ -56,6 +56,9 @@ netlify db init   # provision Netlify Database (Postgres) — injects NETLIFY_DB
 
 # set the remaining environment variables:
 netlify env:set OPENROUTER_API_KEY sk-or-...
+netlify env:set ADMIN_PASSWORD "choose-a-strong-password"
+netlify env:set FEEDBIN_EMAIL you@example.com
+netlify env:set FEEDBIN_PASSWORD "your-feedbin-password"
 netlify env:set INGEST_SECRET "$(openssl rand -hex 24)"   # optional but recommended
 
 netlify deploy --prod
@@ -86,6 +89,7 @@ Environment variables (see `.env.example`):
 
 | Variable | Purpose |
 | --- | --- |
+| `ADMIN_PASSWORD` | Password for the admin area (managing sources, deleting emails). Unset = admin features are open. |
 | `FEEDBIN_EMAIL` / `FEEDBIN_PASSWORD` | Feedbin login, used to import newsletter feeds and ingest their emails via the Feedbin API. |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |
