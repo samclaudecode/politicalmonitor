@@ -1,6 +1,12 @@
 import { parseFeed, type FeedEntry } from "./atom";
 import { feedbinFeedId, fetchFeedbinEntries } from "./feedbin";
-import { handleFromNitterUrl, originalTweets, tweetSubject, toXUrl } from "./nitter";
+import {
+  handleFromNitterUrl,
+  nitterFetchUrl,
+  originalTweets,
+  tweetSubject,
+  toXUrl,
+} from "./nitter";
 import {
   listSources,
   getSource,
@@ -36,11 +42,22 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     let feedTitle: string | null = null;
     const isTwitter = source.kind === "twitter";
 
+    let fetchUrl = source.feed_url;
+    if (isTwitter) {
+      const resolved = nitterFetchUrl(source.feed_url);
+      if (!resolved) {
+        throw new Error(
+          `Cannot determine X handle from feed URL (expected <nitter>/<handle>/rss): ${source.feed_url}`
+        );
+      }
+      fetchUrl = resolved;
+    }
+
     const feedbinId = feedbinFeedId(source.feed_url);
-    if (feedbinId !== null) {
+    if (!isTwitter && feedbinId !== null) {
       entries = await fetchFeedbinEntries(feedbinId);
     } else {
-      const res = await fetch(source.feed_url, {
+      const res = await fetch(fetchUrl, {
         headers: {
           "User-Agent": "PoliticalMonitor/1.0 (+political email archive)",
           Accept: "application/atom+xml, application/rss+xml, application/xml, text/xml",
@@ -55,12 +72,7 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     }
 
     if (isTwitter) {
-      const handle = handleFromNitterUrl(source.feed_url);
-      if (!handle) {
-        throw new Error(
-          `Cannot determine X handle from feed URL (expected <nitter>/<handle>/rss): ${source.feed_url}`
-        );
-      }
+      const handle = handleFromNitterUrl(source.feed_url)!;
       entries = originalTweets(entries, handle);
     }
     result.fetched = true;
@@ -82,11 +94,22 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     }
     await recordFetch(source.id, `ok: ${result.newEmails} new`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    result.error = message;
-    await recordFetch(source.id, `error: ${message.slice(0, 200)}`);
+    result.error = describeError(err);
+    await recordFetch(source.id, `error: ${result.error.slice(0, 200)}`);
   }
   return result;
+}
+
+/** "fetch failed" alone is useless — surface the underlying network cause. */
+function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  let message = err.message;
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    const code = (cause as { code?: string }).code;
+    message += ` (${code || cause.message})`;
+  }
+  return message;
 }
 
 /**

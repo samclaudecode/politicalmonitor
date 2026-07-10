@@ -227,6 +227,8 @@ export async function updateSource(
   id: number,
   input: {
     name: string;
+    feed_url: string;
+    kind: string;
     candidate?: string;
     party?: string;
     office?: string;
@@ -236,10 +238,12 @@ export async function updateSource(
   const p = await db();
   await p.query(
     `UPDATE sources
-     SET name = $1, candidate = $2, party = $3, office = $4, state = $5
-     WHERE id = $6`,
+     SET name = $1, feed_url = $2, kind = $3, candidate = $4, party = $5, office = $6, state = $7
+     WHERE id = $8`,
     [
       input.name,
+      input.feed_url,
+      input.kind === "twitter" ? "twitter" : "email",
       input.candidate || null,
       input.party || "Unknown",
       input.office || null,

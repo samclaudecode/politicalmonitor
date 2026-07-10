@@ -98,7 +98,7 @@ Environment variables (see `.env.example`):
 | --- | --- |
 | `ADMIN_PASSWORD` | Password for the admin area (managing sources, deleting emails). Unset = admin features are open. |
 | `FEEDBIN_EMAIL` / `FEEDBIN_PASSWORD` | Feedbin login, used to import newsletter feeds and ingest their emails via the Feedbin API. |
-| `NITTER_BASE_URL` | Nitter instance for X timelines (default `https://nitter.net`; a self-hosted instance is much more reliable). |
+| `NITTER_BASE_URL` | Nitter instance for X timelines (default `https://xcancel.com`). All twitter sources fetch through this instance regardless of the URL they were created with, so changing it repoints every X source at once. Self-hosting Nitter is the reliable long-term option. |
 | `FOCUS_PARTY` | Party the site focuses on (default `Reform UK`). |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |

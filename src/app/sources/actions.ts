@@ -64,12 +64,34 @@ export async function updateSourceAction(formData: FormData) {
   await requireAdmin();
   const id = parseInt(String(formData.get("id") || ""), 10);
   const name = String(formData.get("name") || "").trim();
-  if (Number.isNaN(id) || !name) {
-    redirect("/sources?error=" + encodeURIComponent("Name is required"));
+  let feed_url = String(formData.get("feed_url") || "").trim();
+  const kind = String(formData.get("kind")) === "twitter" ? "twitter" : "email";
+  if (Number.isNaN(id) || !name || !feed_url) {
+    redirect("/sources?error=" + encodeURIComponent("Name and feed URL are required"));
+  }
+  if (kind === "twitter") {
+    const normalized = normalizeTwitterInput(feed_url);
+    if (!normalized) {
+      redirect(
+        "/sources?error=" +
+          encodeURIComponent(
+            "Could not parse the X handle — enter e.g. @Nigel_Farage, an x.com profile URL, or a Nitter RSS URL"
+          )
+      );
+    }
+    feed_url = normalized;
+  } else {
+    try {
+      new URL(feed_url);
+    } catch {
+      redirect("/sources?error=" + encodeURIComponent("Feed URL is not a valid URL"));
+    }
   }
   try {
     await updateSource(id, {
       name,
+      feed_url,
+      kind,
       candidate: String(formData.get("candidate") || "").trim() || undefined,
       party: String(formData.get("party") || "").trim() || undefined,
       office: String(formData.get("office") || "").trim() || undefined,
@@ -77,7 +99,11 @@ export async function updateSourceAction(formData: FormData) {
     });
   } catch (err) {
     console.error("updateSourceAction:", err);
-    redirect("/sources?error=" + encodeURIComponent("Could not update source"));
+    const message =
+      err instanceof Error && /duplicate key|unique/i.test(err.message)
+        ? "That feed URL is already registered on another source"
+        : "Could not update source";
+    redirect("/sources?error=" + encodeURIComponent(message));
   }
   revalidatePath("/sources");
   revalidatePath("/");

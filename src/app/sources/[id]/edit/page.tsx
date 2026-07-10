@@ -34,12 +34,27 @@ export default async function EditSourcePage({
       </p>
       <div className="form-card">
         <h2>Edit source</h2>
-        <p style={{ color: "var(--ink-faint)", fontSize: "0.85rem" }}>
-          Feed: <code>{source.feed_url}</code>
-        </p>
         <form action={updateSourceAction}>
           <input type="hidden" name="id" value={source.id} />
           <div className="form-grid">
+            <div>
+              <label htmlFor="kind">Source type *</label>
+              <select id="kind" name="kind" defaultValue={source.kind}>
+                <option value="email">Email feed (ATOM/RSS or Feedbin)</option>
+                <option value="twitter">X / Twitter (via Nitter)</option>
+              </select>
+            </div>
+            <div className="full">
+              <label htmlFor="feed_url">
+                Feed URL — or X handle for X sources *
+              </label>
+              <input
+                id="feed_url"
+                name="feed_url"
+                required
+                defaultValue={source.feed_url}
+              />
+            </div>
             <div>
               <label htmlFor="name">Source name *</label>
               <input id="name" name="name" required defaultValue={source.name} />

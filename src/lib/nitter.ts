@@ -10,7 +10,7 @@
 // either check are dropped.
 import type { FeedEntry } from "./atom";
 
-const DEFAULT_NITTER_BASE = "https://nitter.net";
+const DEFAULT_NITTER_BASE = "https://xcancel.com";
 
 export function nitterBaseUrl(): string {
   return (process.env.NITTER_BASE_URL || DEFAULT_NITTER_BASE).replace(/\/$/, "");
@@ -86,4 +86,15 @@ export function toXUrl(link: string | null): string | null {
 /** Filter a parsed Nitter feed down to original tweets by the account. */
 export function originalTweets(entries: FeedEntry[], handle: string): FeedEntry[] {
   return entries.filter((e) => isOriginalTweet(e, handle));
+}
+
+/**
+ * The URL actually fetched for a twitter source: the stored feed_url only
+ * identifies the handle; the request always goes to the currently
+ * configured NITTER_BASE_URL. Swapping instances (e.g. when a public one
+ * dies) is therefore a single env-var change — no source editing needed.
+ */
+export function nitterFetchUrl(storedFeedUrl: string): string | null {
+  const handle = handleFromNitterUrl(storedFeedUrl);
+  return handle ? `${nitterBaseUrl()}/${handle}/rss` : null;
 }
