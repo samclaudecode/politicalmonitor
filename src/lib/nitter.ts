@@ -10,10 +10,13 @@
 // either check are dropped.
 import type { FeedEntry } from "./atom";
 
-// Public Nitter instances are flaky and die often, so we keep a fallback
-// list and try each until one returns valid RSS. NITTER_BASE_URL (single) or
-// NITTER_INSTANCES (comma-separated) override the defaults and take priority.
+// Public Nitter instances are flaky, and several (nitter.net, the main
+// xcancel.com host) block or reset connections from datacenter IPs like
+// Netlify's — which surfaces as UND_ERR_SOCKET. rss.xcancel.com is a
+// dedicated RSS host that answers those requests, so it leads the list.
+// NITTER_BASE_URL (single) or NITTER_INSTANCES (comma-separated) override.
 const DEFAULT_NITTER_INSTANCES = [
+  "https://rss.xcancel.com",
   "https://xcancel.com",
   "https://nitter.poast.org",
   "https://lightbrd.com",
@@ -75,13 +78,17 @@ export function normalizeTwitterInput(input: string): string | null {
 }
 
 /** True when the entry is an original tweet authored by `handle`. */
-export function isOriginalTweet(entry: FeedEntry, handle: string): boolean {
+export function isOriginalTweet(entry: FeedEntry, handle: string | null): boolean {
   const title = entry.title.trim();
   if (/^RT by @/i.test(title)) return false; // repost
   if (/^R to @/i.test(title)) return false; // reply
   const creator = (entry.authorName || "").trim().replace(/^@/, "");
   // dc:creator names the original author; a mismatch means repost/quote-RT.
-  if (creator && creator.toLowerCase() !== handle.toLowerCase()) return false;
+  // When the handle is unknown (non-standard feed URL), rely on the title
+  // prefixes alone.
+  if (handle && creator && creator.toLowerCase() !== handle.toLowerCase()) {
+    return false;
+  }
   return true;
 }
 
@@ -107,58 +114,90 @@ export function toXUrl(link: string | null): string | null {
 }
 
 /** Filter a parsed Nitter feed down to original tweets by the account. */
-export function originalTweets(entries: FeedEntry[], handle: string): FeedEntry[] {
+export function originalTweets(
+  entries: FeedEntry[],
+  handle: string | null
+): FeedEntry[] {
   return entries.filter((e) => isOriginalTweet(e, handle));
 }
 
 /**
- * Fetch an account's timeline RSS, trying each configured Nitter instance in
- * turn until one returns a valid feed. The stored feed_url only identifies
- * the handle, so swapping/adding instances is a config change — no source
- * editing needed. Returns the raw XML and which instance served it.
+ * Ordered list of RSS URLs to try for a source: the exact stored URL first
+ * (so a working endpoint the user pinned is honoured), then the handle
+ * against every configured instance. De-duplicated.
+ */
+export function twitterFeedCandidates(storedFeedUrl: string): string[] {
+  const handle = handleFromNitterUrl(storedFeedUrl);
+  const urls: string[] = [];
+  if (/^https?:\/\//i.test(storedFeedUrl)) urls.push(storedFeedUrl.replace(/\/$/, ""));
+  if (handle) {
+    for (const base of nitterInstances()) urls.push(`${base}/${handle}/rss`);
+  }
+  return [...new Set(urls)];
+}
+
+function errCode(err: unknown): string {
+  if (err instanceof Error) {
+    return (err as { cause?: { code?: string } }).cause?.code || err.name;
+  }
+  return String(err);
+}
+
+async function fetchRssOnce(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: {
+      // A browser-like UA gets past some instances' bot filters.
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      Accept: "application/rss+xml, application/xml, text/xml, */*",
+    },
+    redirect: "follow",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const xml = await res.text();
+  // Nitter error pages ("User not found", rate-limit / Cloudflare HTML) aren't RSS.
+  if (!/<rss[\s>]|<feed[\s>]/i.test(xml)) {
+    throw new Error("not an RSS feed (blocked or rate-limited)");
+  }
+  return xml;
+}
+
+/**
+ * Fetch an account's timeline RSS, trying the stored URL then each configured
+ * Nitter instance until one returns a valid feed. Transient socket errors
+ * (UND_ERR_SOCKET etc.) are retried once per candidate, since flaky instances
+ * often reset the first connection. Returns the raw XML and the URL that served it.
  */
 export async function fetchTwitterFeed(
   storedFeedUrl: string
 ): Promise<{ xml: string; instance: string }> {
-  const handle = handleFromNitterUrl(storedFeedUrl);
-  if (!handle) {
+  const candidates = twitterFeedCandidates(storedFeedUrl);
+  if (candidates.length === 0) {
     throw new Error(
-      `Cannot determine X handle from feed URL (expected <nitter>/<handle>/rss): ${storedFeedUrl}`
+      `Cannot determine an X feed URL from: ${storedFeedUrl} (expected <nitter>/<handle>/rss)`
     );
   }
-  const instances = nitterInstances();
   const errors: string[] = [];
-  for (const base of instances) {
-    try {
-      const res = await fetch(`${base}/${handle}/rss`, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; PoliticalMonitor/1.0; +political archive)",
-          Accept: "application/rss+xml, application/xml, text/xml",
-        },
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) {
-        errors.push(`${hostOf(base)}: HTTP ${res.status}`);
-        continue;
+  for (const url of candidates) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const xml = await fetchRssOnce(url);
+        return { xml, instance: url };
+      } catch (err) {
+        const code = errCode(err);
+        // Retry once on a transient socket-level failure; give up otherwise.
+        const transient = /UND_ERR_SOCKET|ECONNRESET|ETIMEDOUT|EAI_AGAIN|TimeoutError|other side closed/i.test(
+          code
+        );
+        if (transient && attempt === 0) continue;
+        errors.push(`${hostOf(url)}: ${code}`);
+        break;
       }
-      const xml = await res.text();
-      // Nitter error pages ("User not found", rate-limit HTML) aren't RSS.
-      if (!/<rss[\s>]|<feed[\s>]/i.test(xml)) {
-        errors.push(`${hostOf(base)}: not an RSS feed (blocked or rate-limited)`);
-        continue;
-      }
-      return { xml, instance: base };
-    } catch (err) {
-      const code =
-        err instanceof Error
-          ? ((err as { cause?: { code?: string } }).cause?.code || err.name)
-          : String(err);
-      errors.push(`${hostOf(base)}: ${code}`);
     }
   }
   throw new Error(
-    `All ${instances.length} Nitter instance(s) failed for @${handle} — ${errors.join("; ")}`
+    `All ${candidates.length} X feed URL(s) failed — ${errors.join("; ")}`
   );
 }
 

@@ -45,7 +45,7 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     const feedbinId = feedbinFeedId(source.feed_url);
     if (isTwitter) {
       const { xml } = await fetchTwitterFeed(source.feed_url);
-      const handle = handleFromNitterUrl(source.feed_url)!;
+      const handle = handleFromNitterUrl(source.feed_url);
       entries = originalTweets(parseFeed(xml).entries, handle);
     } else if (feedbinId !== null) {
       entries = await fetchFeedbinEntries(feedbinId);
