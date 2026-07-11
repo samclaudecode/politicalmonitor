@@ -6,12 +6,12 @@ import type { Config } from "@netlify/functions";
 import { triggerBackgroundIngest } from "../../src/lib/trigger-ingest";
 
 export default async () => {
-  const triggered = await triggerBackgroundIngest();
-  if (!triggered) {
-    console.error(
-      "scheduled-ingest: could not reach ingest-background (is URL set?)"
-    );
-    return new Response("failed to trigger background ingest", { status: 500 });
+  const trigger = await triggerBackgroundIngest();
+  if (trigger !== "started") {
+    console.error(`scheduled-ingest: background trigger returned "${trigger}"`);
+    return new Response(`background ingest not started: ${trigger}`, {
+      status: 500,
+    });
   }
   console.log("scheduled-ingest: background ingest triggered");
   return new Response("triggered");

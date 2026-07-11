@@ -13,6 +13,17 @@ async function requireAdmin() {
   if (!(await isAdmin())) redirect("/admin/login");
 }
 
+/** redirect() throws a NEXT_REDIRECT error that must be allowed to propagate. */
+function isRedirectError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof (err as { digest?: unknown }).digest === "string" &&
+    (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
 export async function addSourceAction(formData: FormData) {
   await requireAdmin();
   let feed_url = String(formData.get("feed_url") || "").trim();
@@ -146,24 +157,46 @@ export async function toggleSourceAction(formData: FormData) {
 
 export async function ingestNowAction() {
   await requireAdmin();
-  // On Netlify, hand off to the ingest-background function (15-minute
-  // limit) — a direct run here could hit the serverless timeout with many
-  // feeds. Outside Netlify (npm run dev, CLI), run directly.
-  if (await triggerBackgroundIngest()) {
+  // On Netlify, hand off to the ingest-background function (15-minute budget)
+  // and return immediately — running the sync inline here would exceed the
+  // short page-function timeout with many feeds. Only run inline in local dev.
+  const trigger = await triggerBackgroundIngest();
+  if (trigger !== "no-url") {
     revalidatePath("/");
     revalidatePath("/sources");
+    if (trigger === "unavailable") {
+      redirect(
+        "/sources?error=" +
+          encodeURIComponent(
+            "Couldn't reach the background sync function (404). The scheduled sync still runs every 30 minutes — check the ingest-background function deployed."
+          )
+      );
+    }
     redirect(
       "/sources?ok=" +
         encodeURIComponent(
-          "Ingest started in the background — refresh this page in a minute or two to see new fetch results."
+          "Sync started in the background — refresh in a minute or two and watch the Last fetch column."
         )
     );
   }
 
+  // If we're serverless but couldn't determine the site URL, we still must
+  // not run the heavy sync inline (it would time out). Point to the schedule.
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NETLIFY) {
+    redirect(
+      "/sources?error=" +
+        encodeURIComponent(
+          "Can't determine the site URL to start a background sync. Set the URL environment variable; the scheduled sync still runs every 30 minutes."
+        )
+    );
+  }
+
+  // Local dev / CLI: run the sync inline.
   let report;
   try {
     report = await runIngest();
   } catch (err) {
+    if (isRedirectError(err)) throw err;
     console.error("ingestNowAction: error:", err);
     const message = err instanceof Error ? err.message : "ingest failed";
     redirect("/sources?error=" + encodeURIComponent(`Ingest failed: ${message}`.slice(0, 400)));
