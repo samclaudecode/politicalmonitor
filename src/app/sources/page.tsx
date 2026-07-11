@@ -146,14 +146,20 @@ export default async function SourcesPage({
             </div>
             <div className="full">
               <label htmlFor="feed_url">
-                Feed URL — or X handle for X sources *
+                Feed URL — or X handle / RSS URL for X sources *
               </label>
               <input
                 id="feed_url"
                 name="feed_url"
                 required
-                placeholder="https://example.com/feed.xml · feedbin:123456 · @Nigel_Farage"
+                placeholder="@Nigel_Farage · https://rss.xcancel.com/Nigel_Farage/rss · feedbin:123456"
               />
+              <div className="dropzone-hint">
+                For X sources you can enter a handle (<code>@name</code>), an
+                x.com profile URL, or any working RSS URL (a self-hosted
+                Nitter, rss.app, etc.). Handles resolve to the configured
+                Nitter instance.
+              </div>
             </div>
             <div>
               <label htmlFor="name">Source name *</label>

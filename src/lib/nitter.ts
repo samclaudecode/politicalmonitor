@@ -54,8 +54,12 @@ export function handleFromNitterUrl(feedUrl: string): string | null {
 }
 
 /**
- * Turn user input — "@handle", "handle", an x.com/twitter.com profile URL,
- * or a full Nitter RSS URL — into a Nitter RSS feed URL.
+ * Turn user input into a stored feed URL for an X source. Accepts:
+ *   - "@handle" / "handle"          → <primary instance>/<handle>/rss
+ *   - an x.com / twitter.com URL    → <primary instance>/<handle>/rss
+ *   - a Nitter instance URL         → normalized to .../<handle>/rss
+ *   - ANY other http(s) RSS URL     → used verbatim (bring-your-own bridge:
+ *     a self-hosted Nitter, rss.app, or any Twitter-to-RSS service)
  */
 export function normalizeTwitterInput(input: string): string | null {
   const trimmed = input.trim();
@@ -63,15 +67,19 @@ export function normalizeTwitterInput(input: string): string | null {
   if (handleMatch) return `${nitterBaseUrl()}/${handleMatch[1]}/rss`;
   try {
     const u = new URL(trimmed);
+    if (!/^https?:$/i.test(u.protocol)) return null;
     if (/(^|\.)(x\.com|twitter\.com)$/i.test(u.hostname)) {
       const m = /^\/([A-Za-z0-9_]{1,15})\/?$/.exec(u.pathname);
       return m ? `${nitterBaseUrl()}/${m[1]}/rss` : null;
     }
-    // Assume any other URL is a Nitter instance; ensure it points at /rss.
-    if (/^\/[A-Za-z0-9_]{1,15}\/rss\/?$/.test(u.pathname)) return trimmed;
+    // A Nitter-style profile path becomes the RSS path…
+    if (/^\/[A-Za-z0-9_]{1,15}\/rss\/?$/.test(u.pathname)) {
+      return trimmed.replace(/\/$/, "");
+    }
     const m = /^\/([A-Za-z0-9_]{1,15})\/?$/.exec(u.pathname);
     if (m) return `${u.origin}/${m[1]}/rss`;
-    return null;
+    // …otherwise accept any http(s) URL verbatim as a custom RSS feed.
+    return trimmed.replace(/\/$/, "");
   } catch {
     return null;
   }
