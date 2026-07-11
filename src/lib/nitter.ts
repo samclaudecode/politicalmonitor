@@ -146,7 +146,11 @@ export function twitterFeedCandidates(storedFeedUrl: string): string[] {
 
 function errCode(err: unknown): string {
   if (err instanceof Error) {
-    return (err as { cause?: { code?: string } }).cause?.code || err.name;
+    // Network-level failures carry a cause code (UND_ERR_SOCKET, ENOTFOUND…);
+    // our own throws carry a message ("HTTP 403", "not an RSS feed…").
+    const causeCode = (err as { cause?: { code?: string } }).cause?.code;
+    if (causeCode) return causeCode;
+    return err.message || err.name;
   }
   return String(err);
 }
@@ -171,11 +175,17 @@ export function applyProxy(url: string): string {
 async function fetchRssOnce(url: string): Promise<string> {
   const res = await fetch(applyProxy(url), {
     headers: {
-      // A browser-like UA gets past some instances' bot filters.
+      // Full browser-like header set to get past lighter bot filters.
       "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-      Accept: "application/rss+xml, application/xml, text/xml, */*",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      Accept:
+        "application/rss+xml, application/xml;q=0.9, text/xml;q=0.9, text/html;q=0.8, */*;q=0.7",
       "Accept-Language": "en-GB,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Upgrade-Insecure-Requests": "1",
     },
     redirect: "follow",
     signal: AbortSignal.timeout(20_000),
@@ -184,7 +194,10 @@ async function fetchRssOnce(url: string): Promise<string> {
   const xml = await res.text();
   // Nitter error pages ("User not found", rate-limit / Cloudflare HTML) aren't RSS.
   if (!/<rss[\s>]|<feed[\s>]/i.test(xml)) {
-    throw new Error("not an RSS feed (blocked or rate-limited)");
+    const hint = /cloudflare|just a moment|attention required|cf-browser/i.test(xml)
+      ? "Cloudflare challenge"
+      : "not an RSS feed";
+    throw new Error(`${hint} (HTTP ${res.status})`);
   }
   return xml;
 }
