@@ -151,13 +151,31 @@ function errCode(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Route the request through a relay if NITTER_PROXY is set. Cloudflare in
+ * front of many Nitter instances resets connections from some hosts' IPs/TLS
+ * (e.g. Netlify), surfacing as UND_ERR_SOCKET, while other hosts (e.g. Replit)
+ * are accepted. A relay whose egress *is* accepted fixes this for every
+ * instance at once. Format: a prefix ("https://relay/fetch?url=") or a
+ * template containing "{url}"; the target URL is appended/substituted
+ * URL-encoded.
+ */
+export function applyProxy(url: string): string {
+  const prefix = process.env.NITTER_PROXY?.trim();
+  if (!prefix) return url;
+  return prefix.includes("{url}")
+    ? prefix.replace("{url}", encodeURIComponent(url))
+    : `${prefix}${encodeURIComponent(url)}`;
+}
+
 async function fetchRssOnce(url: string): Promise<string> {
-  const res = await fetch(url, {
+  const res = await fetch(applyProxy(url), {
     headers: {
       // A browser-like UA gets past some instances' bot filters.
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
       Accept: "application/rss+xml, application/xml, text/xml, */*",
+      "Accept-Language": "en-GB,en;q=0.9",
     },
     redirect: "follow",
     signal: AbortSignal.timeout(20_000),

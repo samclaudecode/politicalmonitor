@@ -107,7 +107,8 @@ Environment variables (see `.env.example`):
 | `ADMIN_PASSWORD` | Password for the admin area (managing sources, deleting emails). Unset = admin features are open. |
 | `FEEDBIN_EMAIL` / `FEEDBIN_PASSWORD` | Feedbin login, used to import newsletter feeds and ingest their emails via the Feedbin API. |
 | `NITTER_BASE_URL` | Single Nitter instance for X timelines. All twitter sources fetch through the configured instance(s) regardless of the URL they were created with. |
-| `NITTER_INSTANCES` | Comma-separated Nitter fallback list — each X sync tries them in order until one returns a valid feed (public instances are flaky). Defaults to a built-in list led by `xcancel.com`. Self-hosting Nitter is the reliable long-term option. |
+| `NITTER_INSTANCES` | Comma-separated Nitter fallback list — each X sync tries the source's stored URL first, then these in order. Defaults to a built-in list led by `rss.xcancel.com`. |
+| `NITTER_PROXY` | Optional relay for Nitter requests (see "X sync from a blocked host" below). The target URL is appended URL-encoded, or substituted for `{url}`. |
 | `FOCUS_PARTY` | Party the site focuses on (default `Reform UK`). |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |
@@ -139,6 +140,43 @@ Ways to trigger a pull:
 
 Categorization is retried on the next ingest run for any email that failed
 (errors are stored per-email and shown on the email page).
+
+## X sync from a blocked host (UND_ERR_SOCKET)
+
+Many Nitter instances sit behind Cloudflare, which accepts requests from some
+hosts' IP ranges/TLS fingerprints and **resets** others — the same instance
+can sync fine from one platform (e.g. Replit) yet fail with
+`fetch failed (UND_ERR_SOCKET)` from another (e.g. Netlify). It's not the
+code; it's the egress.
+
+Options, cheapest first:
+
+1. **Try other instances.** Set `NITTER_INSTANCES` to a few instances; the
+   sync tries each. Some accept your host even if `nitter.net` doesn't.
+2. **Bring your own RSS.** Edit the X source and paste any working
+   Twitter-to-RSS URL (rss.app, a self-hosted Nitter, etc.) — it's fetched
+   directly.
+3. **Relay through an accepted egress** with `NITTER_PROXY`. If Nitter works
+   from another host you control (Replit, a VPS), run a tiny fetch relay there
+   and point Netlify at it. Minimal relay (Node/Express on Replit):
+
+   ```js
+   import express from "express";
+   const app = express();
+   app.get("/fetch", async (req, res) => {
+     const r = await fetch(req.query.url, {
+       headers: { "User-Agent": "Mozilla/5.0" },
+     });
+     res.type("application/xml").send(await r.text());
+   });
+   app.listen(3000);
+   ```
+
+   Then set `NITTER_PROXY=https://your-relay.replit.app/fetch?url=` on Netlify.
+   Every Nitter request is routed through the relay's (accepted) egress.
+
+The durable long-term answer is a self-hosted Nitter instance in
+`NITTER_INSTANCES`.
 
 ## API
 
