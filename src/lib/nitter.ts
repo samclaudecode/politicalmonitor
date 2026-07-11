@@ -10,10 +10,33 @@
 // either check are dropped.
 import type { FeedEntry } from "./atom";
 
-const DEFAULT_NITTER_BASE = "https://xcancel.com";
+// Public Nitter instances are flaky and die often, so we keep a fallback
+// list and try each until one returns valid RSS. NITTER_BASE_URL (single) or
+// NITTER_INSTANCES (comma-separated) override the defaults and take priority.
+const DEFAULT_NITTER_INSTANCES = [
+  "https://xcancel.com",
+  "https://nitter.poast.org",
+  "https://lightbrd.com",
+  "https://nitter.privacyredirect.com",
+];
 
+export function nitterInstances(): string[] {
+  const configured = [
+    ...(process.env.NITTER_BASE_URL ? [process.env.NITTER_BASE_URL] : []),
+    ...(process.env.NITTER_INSTANCES
+      ? process.env.NITTER_INSTANCES.split(",")
+      : []),
+  ]
+    .map((s) => s.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  const list = configured.length ? configured : DEFAULT_NITTER_INSTANCES;
+  // De-duplicate while preserving order.
+  return [...new Set(list)];
+}
+
+/** Primary instance — used when normalizing user input into a stored URL. */
 export function nitterBaseUrl(): string {
-  return (process.env.NITTER_BASE_URL || DEFAULT_NITTER_BASE).replace(/\/$/, "");
+  return nitterInstances()[0];
 }
 
 /** Extract the account handle from a Nitter RSS URL (…/<handle>/rss). */
@@ -89,12 +112,60 @@ export function originalTweets(entries: FeedEntry[], handle: string): FeedEntry[
 }
 
 /**
- * The URL actually fetched for a twitter source: the stored feed_url only
- * identifies the handle; the request always goes to the currently
- * configured NITTER_BASE_URL. Swapping instances (e.g. when a public one
- * dies) is therefore a single env-var change — no source editing needed.
+ * Fetch an account's timeline RSS, trying each configured Nitter instance in
+ * turn until one returns a valid feed. The stored feed_url only identifies
+ * the handle, so swapping/adding instances is a config change — no source
+ * editing needed. Returns the raw XML and which instance served it.
  */
-export function nitterFetchUrl(storedFeedUrl: string): string | null {
+export async function fetchTwitterFeed(
+  storedFeedUrl: string
+): Promise<{ xml: string; instance: string }> {
   const handle = handleFromNitterUrl(storedFeedUrl);
-  return handle ? `${nitterBaseUrl()}/${handle}/rss` : null;
+  if (!handle) {
+    throw new Error(
+      `Cannot determine X handle from feed URL (expected <nitter>/<handle>/rss): ${storedFeedUrl}`
+    );
+  }
+  const instances = nitterInstances();
+  const errors: string[] = [];
+  for (const base of instances) {
+    try {
+      const res = await fetch(`${base}/${handle}/rss`, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; PoliticalMonitor/1.0; +political archive)",
+          Accept: "application/rss+xml, application/xml, text/xml",
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) {
+        errors.push(`${hostOf(base)}: HTTP ${res.status}`);
+        continue;
+      }
+      const xml = await res.text();
+      // Nitter error pages ("User not found", rate-limit HTML) aren't RSS.
+      if (!/<rss[\s>]|<feed[\s>]/i.test(xml)) {
+        errors.push(`${hostOf(base)}: not an RSS feed (blocked or rate-limited)`);
+        continue;
+      }
+      return { xml, instance: base };
+    } catch (err) {
+      const code =
+        err instanceof Error
+          ? ((err as { cause?: { code?: string } }).cause?.code || err.name)
+          : String(err);
+      errors.push(`${hostOf(base)}: ${code}`);
+    }
+  }
+  throw new Error(
+    `All ${instances.length} Nitter instance(s) failed for @${handle} — ${errors.join("; ")}`
+  );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }

@@ -5,9 +5,12 @@ import { getEmail } from "@/lib/db";
 import { emailTypeLabel, partySlug } from "@/lib/taxonomy";
 import { isAdmin } from "@/lib/auth";
 import DbSetupNotice from "../../components/DbSetupNotice";
+import RebuttalPanel from "../../components/RebuttalPanel";
 import { deleteEmailAction } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 function sanitizeEmailHtml(html: string): string {
   return sanitizeHtml(html, {
@@ -36,10 +39,14 @@ function sanitizeEmailHtml(html: string): string {
 
 export default async function EmailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const rbError = Array.isArray(sp.rberror) ? sp.rberror[0] : sp.rberror;
   const emailId = parseInt(id, 10);
   if (Number.isNaN(emailId)) notFound();
   let email;
@@ -68,12 +75,14 @@ export default async function EmailPage({
           gap: 12,
         }}
       >
-        <Link href="/">← Back to feed</Link>
+        <Link href="/" className="btn btn-secondary btn-small">
+          ← Back to feed
+        </Link>
         {admin ? (
           <form action={deleteEmailAction}>
             <input type="hidden" name="id" value={email.id} />
             <button type="submit" className="btn-danger">
-              Delete this email
+              Delete
             </button>
           </form>
         ) : null}
@@ -151,6 +160,8 @@ export default async function EmailPage({
           <div className="email-body-text">{email.text_body || "(empty email)"}</div>
         )}
       </div>
+
+      {admin ? <RebuttalPanel emailId={email.id} error={rbError} /> : null}
     </>
   );
 }

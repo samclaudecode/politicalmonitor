@@ -93,14 +93,18 @@ export default async function SourcesPage({
         </div>
         <div className="stat">
           <b>{s.emails.toLocaleString()}</b>
-          <span>emails archived</span>
+          <span>emails</span>
+        </div>
+        <div className="stat">
+          <b>{s.tweets.toLocaleString()}</b>
+          <span>tweets</span>
         </div>
         <div className="stat">
           <b>{s.uncategorized.toLocaleString()}</b>
-          <span>awaiting categorization</span>
+          <span>uncategorized</span>
         </div>
         <form action={ingestNowAction} style={{ alignSelf: "center" }}>
-          <button type="submit">Fetch feeds &amp; categorize now</button>
+          <button type="submit">↻ Sync intel now</button>
         </form>
       </div>
 

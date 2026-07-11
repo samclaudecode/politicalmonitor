@@ -2,7 +2,7 @@ import { parseFeed, type FeedEntry } from "./atom";
 import { feedbinFeedId, fetchFeedbinEntries } from "./feedbin";
 import {
   handleFromNitterUrl,
-  nitterFetchUrl,
+  fetchTwitterFeed,
   originalTweets,
   tweetSubject,
   toXUrl,
@@ -42,22 +42,15 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
     let feedTitle: string | null = null;
     const isTwitter = source.kind === "twitter";
 
-    let fetchUrl = source.feed_url;
-    if (isTwitter) {
-      const resolved = nitterFetchUrl(source.feed_url);
-      if (!resolved) {
-        throw new Error(
-          `Cannot determine X handle from feed URL (expected <nitter>/<handle>/rss): ${source.feed_url}`
-        );
-      }
-      fetchUrl = resolved;
-    }
-
     const feedbinId = feedbinFeedId(source.feed_url);
-    if (!isTwitter && feedbinId !== null) {
+    if (isTwitter) {
+      const { xml } = await fetchTwitterFeed(source.feed_url);
+      const handle = handleFromNitterUrl(source.feed_url)!;
+      entries = originalTweets(parseFeed(xml).entries, handle);
+    } else if (feedbinId !== null) {
       entries = await fetchFeedbinEntries(feedbinId);
     } else {
-      const res = await fetch(fetchUrl, {
+      const res = await fetch(source.feed_url, {
         headers: {
           "User-Agent": "PoliticalMonitor/1.0 (+political email archive)",
           Accept: "application/atom+xml, application/rss+xml, application/xml, text/xml",
@@ -69,11 +62,6 @@ async function ingestSource(source: Source): Promise<SourceIngestResult> {
       const feed = parseFeed(xml);
       entries = feed.entries;
       feedTitle = feed.title;
-    }
-
-    if (isTwitter) {
-      const handle = handleFromNitterUrl(source.feed_url)!;
-      entries = originalTweets(entries, handle);
     }
     result.fetched = true;
 

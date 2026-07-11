@@ -46,7 +46,15 @@ X accounts ─────► Nitter RSS ──────────┘      
      newsletter, attack/contrast, …) — tweets are labelled as tweets
    - a neutral one-line **summary**
    - a **fundraising-ask** flag
-6. **Browse & search** — the public feed supports Postgres full-text search
+6. **Draft rebuttals** — upload manifestos and policy papers as **grounding
+   documents** (PDF or markdown) under *Grounding Docs*; they're chunked and
+   full-text indexed. On any tweet or email, admins can generate an
+   AI-drafted rebuttal (measured / punchy ≤280 / detailed) that retrieves the
+   most relevant document passages via Postgres FTS and asks DeepSeek to
+   respond citing them inline as `[1]`, `[2]`. Every rebuttal is a
+   human-reviewed draft grounded in your real documents — nothing is posted
+   automatically.
+7. **Browse & search** — the public feed supports Postgres full-text search
    (subject, summary, and body, weighted) plus filtering by topic, type,
    party, and source, with newest/oldest sorting and pagination. Full emails
    render with sanitized HTML.
@@ -98,7 +106,8 @@ Environment variables (see `.env.example`):
 | --- | --- |
 | `ADMIN_PASSWORD` | Password for the admin area (managing sources, deleting emails). Unset = admin features are open. |
 | `FEEDBIN_EMAIL` / `FEEDBIN_PASSWORD` | Feedbin login, used to import newsletter feeds and ingest their emails via the Feedbin API. |
-| `NITTER_BASE_URL` | Nitter instance for X timelines (default `https://xcancel.com`). All twitter sources fetch through this instance regardless of the URL they were created with, so changing it repoints every X source at once. Self-hosting Nitter is the reliable long-term option. |
+| `NITTER_BASE_URL` | Single Nitter instance for X timelines. All twitter sources fetch through the configured instance(s) regardless of the URL they were created with. |
+| `NITTER_INSTANCES` | Comma-separated Nitter fallback list — each X sync tries them in order until one returns a valid feed (public instances are flaky). Defaults to a built-in list led by `xcancel.com`. Self-hosting Nitter is the reliable long-term option. |
 | `FOCUS_PARTY` | Party the site focuses on (default `Reform UK`). |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |

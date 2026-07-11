@@ -4,10 +4,12 @@ import {
   listSources,
   listUsedTopics,
   listUsedTypes,
+  rebuttalCounts,
   stats,
   type EmailListItem,
 } from "@/lib/db";
 import { PARTIES, emailTypeLabel, focusParty, partySlug } from "@/lib/taxonomy";
+import { isAdmin } from "@/lib/auth";
 import DbSetupNotice from "./components/DbSetupNotice";
 
 export const dynamic = "force-dynamic";
@@ -40,35 +42,51 @@ function buildQuery(
   return s ? `/?${s}` : "/";
 }
 
-function EmailCard({ email }: { email: EmailListItem }) {
+function EmailCard({
+  email,
+  rebuttals,
+  admin,
+}: {
+  email: EmailListItem;
+  rebuttals: number;
+  admin: boolean;
+}) {
   const isTweet = email.kind === "tweet";
-  const senderLine = [
-    email.candidate || email.source_name,
-    email.office,
-    email.state,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const who = email.candidate || email.source_name;
+  const roleLine = [email.office, email.state].filter(Boolean).join(" · ");
   return (
     <article className="email-card">
       <div className="email-card-top">
-        <h2 className="email-subject">
-          <Link href={`/email/${email.id}`}>{email.subject}</Link>
-        </h2>
+        <div className="card-source">
+          <span className={`party-badge party-${partySlug(email.party)}`}>
+            {email.party === "Unknown" ? "?" : email.party}
+          </span>
+          {isTweet ? <span aria-hidden style={{ color: "var(--twitter)" }}>𝕏</span> : <span aria-hidden>✉️</span>}
+          <span>{who}</span>
+          {roleLine ? (
+            <span style={{ color: "var(--ink-faint)", fontWeight: 500 }}>
+              · {roleLine}
+            </span>
+          ) : null}
+        </div>
         <span className="email-date">{formatDate(email.received_at)}</span>
       </div>
-      <p className="email-sender">
-        <span className={`party-badge party-${partySlug(email.party)}`}>
-          {email.party === "Unknown" ? "?" : email.party}
-        </span>{" "}
-        {senderLine}
-        {!isTweet && email.sender_email ? (
-          <span style={{ color: "var(--ink-faint)" }}> · {email.sender_email}</span>
-        ) : null}
-      </p>
-      {email.summary && !isTweet ? (
-        <p className="email-summary">{email.summary}</p>
-      ) : null}
+
+      {isTweet ? (
+        <p className="tweet-text">
+          <Link href={`/email/${email.id}`} style={{ color: "var(--ink)" }}>
+            {email.subject}
+          </Link>
+        </p>
+      ) : (
+        <>
+          <h2 className="email-subject">
+            <Link href={`/email/${email.id}`}>{email.subject}</Link>
+          </h2>
+          {email.summary ? <p className="email-summary">{email.summary}</p> : null}
+        </>
+      )}
+
       <div className="chip-row">
         {isTweet ? (
           <Link className="chip chip-tweet" href="/?kind=tweet">
@@ -80,16 +98,27 @@ function EmailCard({ email }: { email: EmailListItem }) {
           </Link>
         ) : null}
         {!email.categorized_at ? (
-          <span className="chip chip-pending">awaiting categorization</span>
+          <span className="chip chip-pending">uncategorized</span>
         ) : null}
         {email.fundraising_ask ? (
-          <span className="chip chip-money">£ fundraising ask</span>
+          <span className="chip chip-money">£ ask</span>
         ) : null}
         {email.topics.map((t) => (
           <Link key={t} className="chip" href={`/?topic=${encodeURIComponent(t)}`}>
             {t}
           </Link>
         ))}
+        {admin ? (
+          <Link
+            href={`/email/${email.id}#rebuttals`}
+            className={rebuttals > 0 ? "chip chip-count" : "chip"}
+            style={{ marginLeft: "auto" }}
+          >
+            {rebuttals > 0
+              ? `✦ ${rebuttals} rebuttal${rebuttals === 1 ? "" : "s"}`
+              : "✦ Draft rebuttal"}
+          </Link>
+        ) : null}
       </div>
     </article>
   );
@@ -136,6 +165,11 @@ export default async function FeedPage({
     return <DbSetupNotice error={err} />;
   }
 
+  const admin = await isAdmin();
+  const rbCounts = admin
+    ? await rebuttalCounts(items.map((i) => i.id))
+    : new Map<number, number>();
+
   const currentParams: Record<string, string> = {
     q: filters.q,
     topic: filters.topic,
@@ -148,11 +182,11 @@ export default async function FeedPage({
 
   return (
     <>
-      <h1 className="page-title">The {focusParty()} Monitor</h1>
+      <h1 className="page-title">War Room Feed</h1>
       <p className="page-sub">
-        {s.emails.toLocaleString()} emails and original tweets from{" "}
-        {s.sources} feeds tracking {focusParty()} politicians, categorized by
-        policy topic.
+        {s.emails.toLocaleString()} emails and {s.tweets.toLocaleString()}{" "}
+        original tweets from {s.sources} feeds tracking {focusParty()}{" "}
+        politicians — categorized by policy topic, ready to rebut.
       </p>
 
       <form className="filter-bar" method="get" action="/">
@@ -242,22 +276,27 @@ export default async function FeedPage({
 
       {items.length === 0 ? (
         <div className="empty-state">
-          {s.emails === 0 ? (
+          {s.emails === 0 && s.tweets === 0 ? (
             <>
-              <p>The archive is empty.</p>
+              <p>The war room is quiet.</p>
               <p>
-                <Link href="/sources">Add an ATOM feed source</Link> and run an
-                ingest to start collecting emails.
+                <Link href="/sources">Add a source</Link> — an email feed or an
+                X account — and run a sync to start monitoring.
               </p>
             </>
           ) : (
-            <p>No emails match these filters.</p>
+            <p>Nothing matches these filters.</p>
           )}
         </div>
       ) : (
         <div className="email-list">
           {items.map((email) => (
-            <EmailCard key={email.id} email={email} />
+            <EmailCard
+              key={email.id}
+              email={email}
+              rebuttals={rbCounts.get(email.id) ?? 0}
+              admin={admin}
+            />
           ))}
         </div>
       )}

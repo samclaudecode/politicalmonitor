@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
+import Sidebar from "./components/Sidebar";
+import { focusParty } from "@/lib/taxonomy";
 
 export const metadata: Metadata = {
-  title: "PoliticalMonitor — Reform UK",
+  title: "Rebuttal Desk — Reform UK Monitor",
   description:
-    "A searchable archive of emails and original tweets from Reform UK politicians, categorized by policy topic.",
+    "A war-room monitor of Reform UK politicians' emails and original tweets, with AI-drafted rebuttals grounded in your uploaded policy documents.",
 };
 
 export default function RootLayout({
@@ -16,30 +17,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <header className="site-header">
-          <div className="container header-inner">
-            <Link href="/" className="brand">
-              <span className="brand-mark">PM</span>
-              <span>
-                Political<strong>Monitor</strong>
-                <small>Reform UK · emails & tweets</small>
-              </span>
-            </Link>
-            <nav className="site-nav">
-              <Link href="/">Feed</Link>
-              <Link href="/sources">Sources</Link>
-              <Link href="/about">About</Link>
-            </nav>
+        <div className="app-shell">
+          <Sidebar />
+          <div className="main">
+            <div className="topbar">
+              <div className="topbar-title">
+                <span aria-hidden>🛡️</span> {focusParty()} Monitor
+              </div>
+            </div>
+            <div className="content">{children}</div>
           </div>
-        </header>
-        <main className="container">{children}</main>
-        <footer className="site-footer">
-          <div className="container">
-            Emails are ingested via Feedbin/ATOM and original tweets via
-            Nitter, then categorized by UK policy topic with DeepSeek via
-            OpenRouter.
-          </div>
-        </footer>
+        </div>
       </body>
     </html>
   );

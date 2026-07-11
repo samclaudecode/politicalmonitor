@@ -117,6 +117,40 @@ async function migrate(p: Pool): Promise<void> {
     ALTER TABLE emails ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'email';
     ALTER TABLE emails ADD COLUMN IF NOT EXISTS link_url TEXT;
 
+    -- Grounding / rebuttal documents (uploaded PDFs & markdown) and their
+    -- chunks, used to ground AI-drafted rebuttals via full-text retrieval.
+    CREATE TABLE IF NOT EXISTS documents (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      filename TEXT,
+      kind TEXT NOT NULL DEFAULT 'pdf',
+      page_count INTEGER,
+      chunk_count INTEGER NOT NULL DEFAULT 0,
+      char_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS document_chunks (
+      id SERIAL PRIMARY KEY,
+      document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
+    );
+
+    -- AI-drafted rebuttals attached to an archived item (tweet or email).
+    CREATE TABLE IF NOT EXISTS rebuttals (
+      id SERIAL PRIMARY KEY,
+      email_id INTEGER NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      citations TEXT,
+      model TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chunks_document ON document_chunks (document_id);
+    CREATE INDEX IF NOT EXISTS idx_chunks_search ON document_chunks USING GIN (search_tsv);
+    CREATE INDEX IF NOT EXISTS idx_rebuttals_email ON rebuttals (email_id);
     CREATE INDEX IF NOT EXISTS idx_emails_kind ON emails (kind);
     CREATE INDEX IF NOT EXISTS idx_emails_received_at ON emails (received_at DESC);
     CREATE INDEX IF NOT EXISTS idx_emails_source ON emails (source_id);
@@ -499,15 +533,190 @@ export async function listUsedTypes(): Promise<{ email_type: string; count: numb
 
 export async function stats(): Promise<{
   emails: number;
+  tweets: number;
   sources: number;
+  documents: number;
+  rebuttals: number;
   uncategorized: number;
 }> {
   const p = await db();
   const res = await p.query(
     `SELECT
-       (SELECT COUNT(*) FROM emails) AS emails,
+       (SELECT COUNT(*) FROM emails WHERE kind = 'email') AS emails,
+       (SELECT COUNT(*) FROM emails WHERE kind = 'tweet') AS tweets,
        (SELECT COUNT(*) FROM sources) AS sources,
+       (SELECT COUNT(*) FROM documents) AS documents,
+       (SELECT COUNT(*) FROM rebuttals) AS rebuttals,
        (SELECT COUNT(*) FROM emails WHERE categorized_at IS NULL) AS uncategorized`
   );
-  return res.rows[0] as { emails: number; sources: number; uncategorized: number };
+  return res.rows[0] as {
+    emails: number;
+    tweets: number;
+    sources: number;
+    documents: number;
+    rebuttals: number;
+    uncategorized: number;
+  };
+}
+
+// ---------- Documents & chunks ----------
+
+export interface DocumentRow {
+  id: number;
+  title: string;
+  filename: string | null;
+  kind: string;
+  page_count: number | null;
+  chunk_count: number;
+  char_count: number;
+  created_at: string;
+}
+
+export async function listDocuments(): Promise<DocumentRow[]> {
+  const p = await db();
+  const res = await p.query("SELECT * FROM documents ORDER BY created_at DESC");
+  return res.rows as DocumentRow[];
+}
+
+export async function insertDocument(
+  doc: {
+    title: string;
+    filename: string | null;
+    kind: string;
+    page_count: number | null;
+    char_count: number;
+  },
+  chunks: string[]
+): Promise<number> {
+  const p = await db();
+  const client = await p.connect();
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(
+      `INSERT INTO documents (title, filename, kind, page_count, chunk_count, char_count)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [doc.title, doc.filename, doc.kind, doc.page_count, chunks.length, doc.char_count]
+    );
+    const id = res.rows[0].id as number;
+    for (let i = 0; i < chunks.length; i++) {
+      await client.query(
+        "INSERT INTO document_chunks (document_id, ordinal, content) VALUES ($1, $2, $3)",
+        [id, i, chunks[i]]
+      );
+    }
+    await client.query("COMMIT");
+    return id;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteDocument(id: number): Promise<void> {
+  const p = await db();
+  await p.query("DELETE FROM documents WHERE id = $1", [id]);
+}
+
+export interface RetrievedChunk {
+  document_id: number;
+  document_title: string;
+  ordinal: number;
+  content: string;
+  rank: number;
+}
+
+/**
+ * Retrieve the document chunks most relevant to `queryText` via Postgres
+ * full-text ranking. Falls back to the earliest chunks (e.g. a manifesto's
+ * opening) when the query shares no terms with any document.
+ */
+export async function retrieveChunks(
+  queryText: string,
+  limit = 6
+): Promise<RetrievedChunk[]> {
+  const p = await db();
+  const res = await p.query(
+    `SELECT c.document_id, d.title AS document_title, c.ordinal, c.content,
+            ts_rank(c.search_tsv, websearch_to_tsquery('english', $1)) AS rank
+     FROM document_chunks c JOIN documents d ON d.id = c.document_id
+     WHERE c.search_tsv @@ websearch_to_tsquery('english', $1)
+     ORDER BY rank DESC
+     LIMIT $2`,
+    [queryText, limit]
+  );
+  if (res.rows.length > 0) return res.rows as RetrievedChunk[];
+
+  const fallback = await p.query(
+    `SELECT c.document_id, d.title AS document_title, c.ordinal, c.content, 0 AS rank
+     FROM document_chunks c JOIN documents d ON d.id = c.document_id
+     ORDER BY c.document_id, c.ordinal
+     LIMIT $1`,
+    [limit]
+  );
+  return fallback.rows as RetrievedChunk[];
+}
+
+export async function hasDocuments(): Promise<boolean> {
+  const p = await db();
+  const res = await p.query("SELECT EXISTS (SELECT 1 FROM documents) AS e");
+  return res.rows[0].e as boolean;
+}
+
+// ---------- Rebuttals ----------
+
+export interface RebuttalRow {
+  id: number;
+  email_id: number;
+  content: string;
+  citations: string | null;
+  model: string | null;
+  created_at: string;
+}
+
+export async function insertRebuttal(input: {
+  email_id: number;
+  content: string;
+  citations: string | null;
+  model: string | null;
+}): Promise<number> {
+  const p = await db();
+  const res = await p.query(
+    `INSERT INTO rebuttals (email_id, content, citations, model)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [input.email_id, input.content, input.citations, input.model]
+  );
+  return res.rows[0].id as number;
+}
+
+export async function listRebuttals(emailId: number): Promise<RebuttalRow[]> {
+  const p = await db();
+  const res = await p.query(
+    "SELECT * FROM rebuttals WHERE email_id = $1 ORDER BY created_at DESC",
+    [emailId]
+  );
+  return res.rows as RebuttalRow[];
+}
+
+export async function deleteRebuttal(id: number): Promise<void> {
+  const p = await db();
+  await p.query("DELETE FROM rebuttals WHERE id = $1", [id]);
+}
+
+export async function rebuttalCounts(
+  emailIds: number[]
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  if (emailIds.length === 0) return map;
+  const p = await db();
+  const res = await p.query(
+    `SELECT email_id, COUNT(*)::int AS n FROM rebuttals
+     WHERE email_id = ANY($1) GROUP BY email_id`,
+    [emailIds]
+  );
+  for (const r of res.rows as { email_id: number; n: number }[]) {
+    map.set(r.email_id, r.n);
+  }
+  return map;
 }
