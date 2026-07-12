@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
-import { deleteEmail, deleteRebuttal } from "@/lib/db";
+import { deleteEmail, deleteRebuttal, deleteFactCheck } from "@/lib/db";
 import { draftAndSaveRebuttal, type RebuttalTone } from "@/lib/rebuttal";
+import { runFactCheck } from "@/lib/factcheck";
 
 export async function deleteEmailAction(formData: FormData) {
   if (!(await isAdmin())) redirect("/admin/login");
@@ -41,6 +42,31 @@ export async function draftRebuttalAction(formData: FormData) {
   revalidatePath(`/email/${id}`);
   revalidatePath("/");
   redirect(`/email/${id}#rebuttals`);
+}
+
+export async function factCheckAction(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = parseInt(String(formData.get("id") || ""), 10);
+  if (Number.isNaN(id)) redirect("/");
+  try {
+    await runFactCheck(id);
+  } catch (err) {
+    console.error("factCheckAction:", err);
+    const message = err instanceof Error ? err.message : "Fact-check failed";
+    redirect(`/email/${id}?fcerror=` + encodeURIComponent(message.slice(0, 300)));
+  }
+  revalidatePath(`/email/${id}`);
+  revalidatePath("/");
+  redirect(`/email/${id}#factcheck`);
+}
+
+export async function deleteFactCheckAction(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = parseInt(String(formData.get("id") || ""), 10);
+  if (!Number.isNaN(id)) await deleteFactCheck(id);
+  revalidatePath(`/email/${id}`);
+  revalidatePath("/");
+  redirect(`/email/${id}#factcheck`);
 }
 
 export async function deleteRebuttalAction(formData: FormData) {

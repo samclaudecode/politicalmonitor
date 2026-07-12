@@ -6,6 +6,7 @@ import { emailTypeLabel, partySlug } from "@/lib/taxonomy";
 import { isAdmin } from "@/lib/auth";
 import DbSetupNotice from "../../components/DbSetupNotice";
 import RebuttalPanel from "../../components/RebuttalPanel";
+import FactCheckPanel from "../../components/FactCheckPanel";
 import { deleteEmailAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export default async function EmailPage({
   const { id } = await params;
   const sp = await searchParams;
   const rbError = Array.isArray(sp.rberror) ? sp.rberror[0] : sp.rberror;
+  const fcError = Array.isArray(sp.fcerror) ? sp.fcerror[0] : sp.fcerror;
   const emailId = parseInt(id, 10);
   if (Number.isNaN(emailId)) notFound();
   let email;
@@ -161,6 +163,7 @@ export default async function EmailPage({
         )}
       </div>
 
+      {admin ? <FactCheckPanel emailId={email.id} error={fcError} /> : null}
       {admin ? <RebuttalPanel emailId={email.id} error={rbError} /> : null}
     </>
   );

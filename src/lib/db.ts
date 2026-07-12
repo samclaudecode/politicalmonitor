@@ -138,6 +138,22 @@ async function migrate(p: Pool): Promise<void> {
       search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
     );
 
+    -- On-demand fact-checks: one cached result per archived item.
+    CREATE TABLE IF NOT EXISTS fact_checks (
+      id SERIAL PRIMARY KEY,
+      email_id INTEGER NOT NULL UNIQUE REFERENCES emails(id) ON DELETE CASCADE,
+      status TEXT NOT NULL, -- 'checked' | 'no_claims'
+      claims TEXT,          -- JSON: per-claim verdicts, evidence, confidence
+      doc_context TEXT,     -- JSON: grounding-doc excerpts consulted
+      bs_score INTEGER,     -- 0 (grounded) .. 100 (total bull)
+      contested BOOLEAN NOT NULL DEFAULT FALSE,
+      notes TEXT,
+      model TEXT,
+      tokens_used INTEGER,
+      cost_usd DOUBLE PRECISION,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     -- AI-drafted rebuttals attached to an archived item (tweet or email).
     CREATE TABLE IF NOT EXISTS rebuttals (
       id SERIAL PRIMARY KEY,
@@ -662,6 +678,98 @@ export async function hasDocuments(): Promise<boolean> {
   const p = await db();
   const res = await p.query("SELECT EXISTS (SELECT 1 FROM documents) AS e");
   return res.rows[0].e as boolean;
+}
+
+// ---------- Fact checks ----------
+
+export interface FactCheckRow {
+  id: number;
+  email_id: number;
+  status: string; // 'checked' | 'no_claims'
+  claims: string | null;
+  doc_context: string | null;
+  bs_score: number | null;
+  contested: boolean;
+  notes: string | null;
+  model: string | null;
+  tokens_used: number | null;
+  cost_usd: number | null;
+  created_at: string;
+}
+
+export async function getFactCheck(emailId: number): Promise<FactCheckRow | undefined> {
+  const p = await db();
+  const res = await p.query("SELECT * FROM fact_checks WHERE email_id = $1", [emailId]);
+  return res.rows[0] as FactCheckRow | undefined;
+}
+
+export async function upsertFactCheck(input: {
+  email_id: number;
+  status: string;
+  claims: string | null;
+  doc_context: string | null;
+  bs_score: number | null;
+  contested: boolean;
+  notes: string | null;
+  model: string | null;
+  tokens_used: number | null;
+  cost_usd: number | null;
+}): Promise<void> {
+  const p = await db();
+  await p.query(
+    `INSERT INTO fact_checks
+       (email_id, status, claims, doc_context, bs_score, contested, notes, model, tokens_used, cost_usd, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+     ON CONFLICT (email_id) DO UPDATE SET
+       status = EXCLUDED.status, claims = EXCLUDED.claims,
+       doc_context = EXCLUDED.doc_context, bs_score = EXCLUDED.bs_score,
+       contested = EXCLUDED.contested, notes = EXCLUDED.notes,
+       model = EXCLUDED.model, tokens_used = EXCLUDED.tokens_used,
+       cost_usd = EXCLUDED.cost_usd, created_at = now()`,
+    [
+      input.email_id,
+      input.status,
+      input.claims,
+      input.doc_context,
+      input.bs_score,
+      input.contested,
+      input.notes,
+      input.model,
+      input.tokens_used,
+      input.cost_usd,
+    ]
+  );
+}
+
+export async function deleteFactCheck(emailId: number): Promise<void> {
+  const p = await db();
+  await p.query("DELETE FROM fact_checks WHERE email_id = $1", [emailId]);
+}
+
+/** BS-score summaries for feed badges (admin view). */
+export async function factCheckSummaries(
+  emailIds: number[]
+): Promise<Map<number, { bs_score: number | null; status: string; contested: boolean }>> {
+  const map = new Map<number, { bs_score: number | null; status: string; contested: boolean }>();
+  if (emailIds.length === 0) return map;
+  const p = await db();
+  const res = await p.query(
+    "SELECT email_id, bs_score, status, contested FROM fact_checks WHERE email_id = ANY($1)",
+    [emailIds]
+  );
+  for (const r of res.rows as { email_id: number; bs_score: number | null; status: string; contested: boolean }[]) {
+    map.set(r.email_id, { bs_score: r.bs_score, status: r.status, contested: r.contested });
+  }
+  return map;
+}
+
+/** Checks created in the last 24h — for the optional daily budget cap. */
+export async function factChecksLastDay(): Promise<number> {
+  const p = await db();
+  const res = await p.query(
+    "SELECT COUNT(*) AS n FROM fact_checks WHERE created_at > now() - interval '1 day'"
+  );
+  return res.rows[0].n as number;
 }
 
 // ---------- Rebuttals ----------

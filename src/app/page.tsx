@@ -5,9 +5,11 @@ import {
   listUsedTopics,
   listUsedTypes,
   rebuttalCounts,
+  factCheckSummaries,
   stats,
   type EmailListItem,
 } from "@/lib/db";
+import { bsLabel } from "@/lib/factcheck";
 import { PARTIES, emailTypeLabel, focusParty, partySlug } from "@/lib/taxonomy";
 import { isAdmin } from "@/lib/auth";
 import DbSetupNotice from "./components/DbSetupNotice";
@@ -46,10 +48,12 @@ function EmailCard({
   email,
   rebuttals,
   admin,
+  factCheck,
 }: {
   email: EmailListItem;
   rebuttals: number;
   admin: boolean;
+  factCheck?: { bs_score: number | null; status: string; contested: boolean };
 }) {
   const isTweet = email.kind === "tweet";
   const who = email.candidate || email.source_name;
@@ -108,11 +112,32 @@ function EmailCard({
             {t}
           </Link>
         ))}
+        {admin && factCheck?.status === "checked" && factCheck.bs_score !== null ? (
+          <Link
+            href={`/email/${email.id}#factcheck`}
+            className={`chip ${
+              factCheck.bs_score <= 30
+                ? "chip-bs-low"
+                : factCheck.bs_score <= 60
+                ? "chip-bs-mid"
+                : "chip-bs-high"
+            }`}
+            style={{ marginLeft: "auto" }}
+            title={factCheck.contested ? "Contested — human review" : undefined}
+          >
+            ⚖ BS {factCheck.bs_score} · {bsLabel(factCheck.bs_score)}
+            {factCheck.contested ? " ⚠" : ""}
+          </Link>
+        ) : null}
         {admin ? (
           <Link
             href={`/email/${email.id}#rebuttals`}
             className={rebuttals > 0 ? "chip chip-count" : "chip"}
-            style={{ marginLeft: "auto" }}
+            style={
+              factCheck?.status === "checked" && factCheck.bs_score !== null
+                ? undefined
+                : { marginLeft: "auto" }
+            }
           >
             {rebuttals > 0
               ? `✦ ${rebuttals} rebuttal${rebuttals === 1 ? "" : "s"}`
@@ -166,9 +191,10 @@ export default async function FeedPage({
   }
 
   const admin = await isAdmin();
-  const rbCounts = admin
-    ? await rebuttalCounts(items.map((i) => i.id))
-    : new Map<number, number>();
+  const ids = items.map((i) => i.id);
+  const [rbCounts, fcSummaries] = admin
+    ? await Promise.all([rebuttalCounts(ids), factCheckSummaries(ids)])
+    : [new Map<number, number>(), new Map()];
 
   const currentParams: Record<string, string> = {
     q: filters.q,
@@ -296,6 +322,7 @@ export default async function FeedPage({
               email={email}
               rebuttals={rbCounts.get(email.id) ?? 0}
               admin={admin}
+              factCheck={fcSummaries.get(email.id)}
             />
           ))}
         </div>

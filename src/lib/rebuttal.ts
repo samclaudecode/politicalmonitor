@@ -3,10 +3,12 @@
 import { focusParty } from "./taxonomy";
 import {
   getEmail,
+  getFactCheck,
   retrieveChunks,
   insertRebuttal,
   type RetrievedChunk,
 } from "./db";
+import { parseClaims, type CheckedClaim } from "./factcheck";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324";
@@ -53,9 +55,21 @@ export async function draftRebuttal(
   const chunks = await retrieveChunks(itemText || item.subject, 6);
   const party = focusParty();
 
+  // If this item has been fact-checked, feed the web receipts in too — the
+  // rebuttal can then cite ONS/gov.uk evidence alongside the party documents.
+  let webEvidence: CheckedClaim[] = [];
+  try {
+    const check = await getFactCheck(emailId);
+    if (check && check.status === "checked") {
+      webEvidence = parseClaims(check).filter((c) => c.evidence_quote);
+    }
+  } catch {
+    // fact-check table optional — never block a rebuttal on it
+  }
+
   const system = `You are a political communications adviser to ${party}. You draft rebuttals to opponents' public statements on behalf of ${party}.
 Rules:
-- Ground every factual claim ONLY in the provided document excerpts. Cite them inline as [1], [2], etc. matching the excerpt numbers.
+- Ground every factual claim ONLY in the provided document excerpts (cite inline as [1], [2], …) or web evidence (cite as [W1], [W2], …). Never mix up the two numbering schemes.
 - If the excerpts do not support a point, do not invent facts — argue from principle or values instead, and do not fabricate figures or quotes.
 - Never use slurs or personal abuse. Attack the argument, not the person.
 - Write in British English. Output ONLY the rebuttal text, no preamble or headings.
@@ -71,6 +85,14 @@ Tone: ${TONE_GUIDANCE[tone]}`;
     chunks.length
       ? `Document excerpts you may cite:\n${buildContext(chunks)}`
       : "No grounding documents are available; argue from principle and do not invent facts.",
+    webEvidence.length
+      ? `\nFact-checked web evidence about this item (verified sources — cite as [W1], [W2], …):\n${webEvidence
+          .map(
+            (c, i) =>
+              `[[W${i + 1}]] (${c.source || "web"}) claim "${c.claim}" was rated ${c.verdict}: "${c.evidence_quote}" ${c.evidence_url}`
+          )
+          .join("\n")}`
+      : "",
   ].join("\n");
 
   const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;

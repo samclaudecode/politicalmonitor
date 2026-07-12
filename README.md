@@ -54,7 +54,21 @@ X accounts ─────► Nitter RSS ──────────┘      
    respond citing them inline as `[1]`, `[2]`. Every rebuttal is a
    human-reviewed draft grounded in your real documents — nothing is posted
    automatically.
-7. **Browse & search** — the public feed supports Postgres full-text search
+7. **Fact-check & BS meter** — on any item, admins can run an on-demand
+   fact-check: a cheap triage model extracts up to 3 checkable claims
+   (pure rhetoric exits early for pennies), then a single
+   [OpenRouter Fusion](https://openrouter.ai/openrouter/fusion) call — a
+   panel of models with web search plus a judge — verifies each claim
+   against reliable sources (gov.uk, ONS, OBR, Full Fact, BBC/Reuters),
+   returning verdicts, confidence, quotes and URLs. Grounding docs are
+   consulted alongside. Results are cached per item and rendered as a
+   0–100 **BS meter** (Grounded → Spin → Total Bull) with an uncertainty
+   band when sources disagree, a receipts list, and per-check token/cost
+   accounting. `FACT_CHECK_DAILY_CAP` adds a hard budget brake; if Fusion
+   is unavailable it degrades to a single web-search-enabled model.
+   Fact-checked items feed their web receipts into rebuttal drafts
+   (cited as [W1], [W2]) alongside grounding-doc citations.
+8. **Browse & search** — the public feed supports Postgres full-text search
    (subject, summary, and body, weighted) plus filtering by topic, type,
    party, and source, with newest/oldest sorting and pagination. Full emails
    render with sanitized HTML.
@@ -116,6 +130,8 @@ Environment variables (see `.env.example`):
 | `OPENROUTER_API_KEY` | OpenRouter key used for DeepSeek categorization. Without it, emails are archived but left uncategorized. |
 | `OPENROUTER_MODEL` | Model id, defaults to `deepseek/deepseek-chat-v3-0324`. |
 | `INGEST_SECRET` | Optional bearer token protecting `POST /api/ingest`. |
+| `FACT_CHECK_MODEL` | Web-verification model for fact-checks, default `openrouter/fusion`. |
+| `FACT_CHECK_DAILY_CAP` | Optional max fact-checks per rolling 24h (budget brake). |
 
 ## Running ingestion
 
