@@ -176,6 +176,10 @@ function normalizeClaims(raw: unknown): CheckedClaim[] {
   return out.slice(0, 3);
 }
 
+const STRUCTURE_PROMPT = `You convert a fact-check analysis into strict JSON. Using ONLY information present in the analysis (never invent facts, quotes or URLs), respond with ONLY this JSON shape:
+{"claims": [{"claim": "...", "verdict": "accurate|mostly-true|misleading|unsupported|false", "confidence": 0-100, "evidence_quote": "...", "evidence_url": "https://... or empty", "source": "...", "rationale": "...", "contested": true/false}], "notes": "... or null"}
+If the analysis gives no verdict for a claim, use "unsupported" with empty evidence fields.`;
+
 async function verifyClaims(
   claims: string[],
   itemContext: string
@@ -194,6 +198,8 @@ async function verifyClaims(
 
   const fusionModel = process.env.FACT_CHECK_MODEL || DEFAULT_FUSION_MODEL;
   let content: string, usage: OpenRouterUsage, model = fusionModel;
+  let totalTokens = 0;
+  let totalCost = 0;
   try {
     ({ content, usage } = await callOpenRouter(fusionModel, VERIFY_PROMPT, user, 0.2));
   } catch (err) {
@@ -202,12 +208,35 @@ async function verifyClaims(
     model = FALLBACK_WEB_MODEL;
     ({ content, usage } = await callOpenRouter(FALLBACK_WEB_MODEL, VERIFY_PROMPT, user, 0.2));
   }
-  const parsed = extractJson<{ claims?: unknown; notes?: unknown }>(content);
+  totalTokens += usage.total_tokens ?? 0;
+  totalCost += usage.cost ?? 0;
+
+  // Research-oriented models (Fusion especially) sometimes answer in prose
+  // despite instructions. Structure the analysis with a cheap second pass
+  // rather than failing the whole check.
+  let parsed: { claims?: unknown; notes?: unknown };
+  try {
+    parsed = extractJson<{ claims?: unknown; notes?: unknown }>(content);
+  } catch {
+    console.warn("fact-check: verifier returned prose, running structuring pass");
+    const structurer = process.env.OPENROUTER_MODEL || DEFAULT_CLAIM_MODEL;
+    const structured = await callOpenRouter(
+      structurer,
+      STRUCTURE_PROMPT,
+      `Claims being checked:\n${claims.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n\nAnalysis:\n"""${content.slice(0, 12000)}"""`,
+      0.1
+    );
+    totalTokens += structured.usage.total_tokens ?? 0;
+    totalCost += structured.usage.cost ?? 0;
+    parsed = extractJson<{ claims?: unknown; notes?: unknown }>(structured.content);
+    model = `${model} + ${structurer} (structured)`;
+  }
+
   return {
     claims: normalizeClaims(parsed.claims),
     notes: typeof parsed.notes === "string" ? parsed.notes.slice(0, 500) : null,
     model,
-    usage,
+    usage: { total_tokens: totalTokens, cost: totalCost },
   };
 }
 

@@ -8,6 +8,7 @@ import {
 } from "@/lib/factcheck";
 import { isRebuttalConfigured } from "@/lib/rebuttal";
 import { factCheckAction, deleteFactCheckAction } from "../email/actions";
+import AutoRefresh from "./AutoRefresh";
 
 const VERDICT_CLASS: Record<string, string> = {
   accurate: "verdict-accurate",
@@ -107,11 +108,12 @@ export default async function FactCheckPanel({
               </>
             ) : (
               <>
+                <AutoRefresh seconds={15} />
+                <span className="pulse-dot" style={{ display: "inline-block", marginRight: 8 }} />
                 <strong>Check in progress…</strong> started{" "}
                 {pendingMinutes < 1 ? "just now" : `${pendingMinutes} min ago`}.
-                A Fusion panel can take a couple of minutes —{" "}
-                <a href={`/email/${emailId}#factcheck`}>refresh this page</a> to
-                see the result.
+                A Fusion panel can take a couple of minutes — this page
+                refreshes itself every 15 seconds until the result lands.
               </>
             )}
           </p>
