@@ -4,6 +4,7 @@ import {
   parseDocContext,
   bsLabel,
   factCheckDailyCap,
+  minutesSince,
 } from "@/lib/factcheck";
 import { isRebuttalConfigured } from "@/lib/rebuttal";
 import { factCheckAction, deleteFactCheckAction } from "../email/actions";
@@ -63,6 +64,9 @@ export default async function FactCheckPanel({
   const cap = factCheckDailyCap();
   const claims = check ? parseClaims(check) : [];
   const docs = check ? parseDocContext(check) : [];
+  const pendingMinutes =
+    check?.status === "pending" ? minutesSince(check.created_at) : 0;
+  const stalled = check?.status === "pending" && pendingMinutes >= 12;
 
   return (
     <section className="rebuttal-panel" id="factcheck">
@@ -70,11 +74,11 @@ export default async function FactCheckPanel({
         <span className="label">
           <span aria-hidden>⚖️</span> Fact Check &amp; BS Meter
         </span>
-        {configured ? (
+        {configured && !(check?.status === "pending" && !stalled) ? (
           <form action={factCheckAction}>
             <input type="hidden" name="id" value={emailId} />
             <button type="submit">
-              {check ? "↻ Re-check" : "⚖ Run fact-check"}
+              {check && check.status !== "error" ? "↻ Re-check" : "⚖ Run fact-check"}
             </button>
           </form>
         ) : null}
@@ -93,6 +97,28 @@ export default async function FactCheckPanel({
             pence and takes up to a couple of minutes.
             {cap !== null ? ` Daily cap: ${cap}.` : ""}
           </p>
+        ) : check.status === "pending" ? (
+          <p className="rebuttal-empty">
+            {stalled ? (
+              <>
+                <strong>Check appears stalled</strong> (started {pendingMinutes}{" "}
+                minutes ago) — it may have failed silently. Run it again, and
+                check the <code>factcheck-background</code> function logs.
+              </>
+            ) : (
+              <>
+                <strong>Check in progress…</strong> started{" "}
+                {pendingMinutes < 1 ? "just now" : `${pendingMinutes} min ago`}.
+                A Fusion panel can take a couple of minutes —{" "}
+                <a href={`/email/${emailId}#factcheck`}>refresh this page</a> to
+                see the result.
+              </>
+            )}
+          </p>
+        ) : check.status === "error" ? (
+          <div className="notice">
+            <strong>Fact-check failed:</strong> {check.notes || "unknown error"}
+          </div>
         ) : check.status === "no_claims" ? (
           <p className="rebuttal-empty">
             <strong>No checkable claims</strong> — {check.notes} (

@@ -236,6 +236,45 @@ export function factCheckDailyCap(): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+/** Mark a check as running so the UI can show progress across refreshes. */
+export async function markFactCheckPending(emailId: number): Promise<void> {
+  await upsertFactCheck({
+    email_id: emailId,
+    status: "pending",
+    claims: null,
+    doc_context: null,
+    bs_score: null,
+    contested: false,
+    notes: null,
+    model: null,
+    tokens_used: null,
+    cost_usd: null,
+  });
+}
+
+export async function markFactCheckError(
+  emailId: number,
+  message: string
+): Promise<void> {
+  await upsertFactCheck({
+    email_id: emailId,
+    status: "error",
+    claims: null,
+    doc_context: null,
+    bs_score: null,
+    contested: false,
+    notes: message.slice(0, 400),
+    model: null,
+    tokens_used: null,
+    cost_usd: null,
+  });
+}
+
+/** Minutes since a row was created — used to spot stalled pending checks. */
+export function minutesSince(iso: string): number {
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+}
+
 export async function runFactCheck(emailId: number): Promise<FactCheckResult> {
   const cap = factCheckDailyCap();
   if (cap !== null && (await factChecksLastDay()) >= cap) {

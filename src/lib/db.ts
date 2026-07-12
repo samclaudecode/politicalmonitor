@@ -766,8 +766,11 @@ export async function factCheckSummaries(
 /** Checks created in the last 24h — for the optional daily budget cap. */
 export async function factChecksLastDay(): Promise<number> {
   const p = await db();
+  // 'pending' rows are checks that haven't consumed tokens yet (including
+  // the one about to run) — don't count them against the budget.
   const res = await p.query(
-    "SELECT COUNT(*) AS n FROM fact_checks WHERE created_at > now() - interval '1 day'"
+    `SELECT COUNT(*) AS n FROM fact_checks
+     WHERE created_at > now() - interval '1 day' AND status <> 'pending'`
   );
   return res.rows[0].n as number;
 }
