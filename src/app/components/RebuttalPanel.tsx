@@ -56,8 +56,18 @@ export default async function RebuttalPanel({
         ) : (
           rebuttals.map((r) => {
             const cites = parseCitations(r.citations);
+            const noAttack = r.content.startsWith("NO REBUTTAL RECOMMENDED");
             return (
-              <div className="rebuttal" key={r.id}>
+              <div
+                className="rebuttal"
+                key={r.id}
+                style={noAttack ? { borderLeftColor: "var(--warn)" } : undefined}
+              >
+                {noAttack ? (
+                  <span className="chip chip-type" style={{ marginBottom: 8, display: "inline-block" }}>
+                    stand down
+                  </span>
+                ) : null}
                 <div className="rebuttal-text">{r.content}</div>
                 <div className="rebuttal-meta">
                   <span>{new Date(r.created_at).toLocaleString()}</span>

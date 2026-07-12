@@ -46,14 +46,26 @@ X accounts ─────► Nitter RSS ──────────┘      
      newsletter, attack/contrast, …) — tweets are labelled as tweets
    - a neutral one-line **summary**
    - a **fundraising-ask** flag
-6. **Draft rebuttals** — upload manifestos and policy papers as **grounding
-   documents** (PDF or markdown) under *Grounding Docs*; they're chunked and
-   full-text indexed. On any tweet or email, admins can generate an
-   AI-drafted rebuttal (measured / punchy ≤280 / detailed) that retrieves the
-   most relevant document passages via Postgres FTS and asks DeepSeek to
-   respond citing them inline as `[1]`, `[2]`. Every rebuttal is a
-   human-reviewed draft grounded in your real documents — nothing is posted
-   automatically.
+6. **Draft rebuttals** — upload *your side's* manifestos and policy papers
+   as **grounding documents** (PDF or markdown) under *Grounding Docs*;
+   they're chunked and full-text indexed. On any tweet or email, admins can
+   generate an AI-drafted rebuttal (measured / punchy ≤280 / detailed) that
+   retrieves the most relevant document passages via Postgres FTS and cites
+   them inline as `[1]`, `[2]`. Every rebuttal is a human-reviewed draft
+   grounded in real documents — nothing is posted automatically.
+
+   Rebuttals follow a fixed **doctrine** (see `rebuttalSystemPrompt` in
+   `src/lib/rebuttal.ts`): they always argue *against* the monitored party
+   and speak *for* `REBUTTAL_PARTY` — never agreeing with or amplifying the
+   message's framing; conceding true claims in as few words as possible
+   before pivoting to the strongest counter; refusing to repeat the
+   opponent's slogans; attacking the single weakest load-bearing element;
+   naming rhetorical tricks in plain voter language; using only cited
+   evidence for factual claims (values-based argument otherwise); ending on
+   the positive alternative; and standing down entirely on personal/human
+   moments (bereavements, tributes) with an explicit
+   "NO REBUTTAL RECOMMENDED" note instead. Add house style or campaign
+   lines via `REBUTTAL_EXTRA_INSTRUCTIONS` without touching code.
 7. **Fact-check & BS meter** — on any item, admins can run an on-demand
    fact-check: a cheap triage model extracts up to 3 checkable claims
    (pure rhetoric exits early for pennies), then a single
@@ -123,7 +135,9 @@ Environment variables (see `.env.example`):
 | `NITTER_BASE_URL` | Single Nitter instance for X timelines. All twitter sources fetch through the configured instance(s) regardless of the URL they were created with. |
 | `NITTER_INSTANCES` | Comma-separated Nitter fallback list — each X sync tries the source's stored URL first, then these in order. Defaults to a built-in list led by `rss.xcancel.com`. |
 | `NITTER_PROXY` | Optional relay for Nitter requests (see "X sync from a blocked host" below). The target URL is appended URL-encoded, or substituted for `{url}`. |
-| `FOCUS_PARTY` | Party the site focuses on (default `Reform UK`). |
+| `FOCUS_PARTY` | Party being monitored (default `Reform UK`). |
+| `REBUTTAL_PARTY` | Whom rebuttals speak for (default "the opposition to FOCUS_PARTY"), e.g. `the Liberal Democrats`. |
+| `REBUTTAL_EXTRA_INSTRUCTIONS` | Optional extra lines appended to the rebuttal doctrine (house style, banned phrases, campaign lines). |
 | `NETLIFY_DB_URL` | Postgres connection string, injected by Netlify Database. |
 | `NETLIFY_DATABASE_URL` | Same, injected by the legacy Neon extension (also supported). |
 | `DATABASE_URL` | Fallback Postgres URL for local dev / other hosts. |

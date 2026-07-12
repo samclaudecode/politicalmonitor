@@ -24,6 +24,50 @@ const TONE_GUIDANCE: Record<RebuttalTone, string> = {
     "A thorough point-by-point response of up to four short paragraphs for a briefing note.",
 };
 
+/**
+ * Whom rebuttals speak FOR. The archive monitors FOCUS_PARTY politicians,
+ * so the rebuttal voice must be their opposition — set REBUTTAL_PARTY to
+ * name your side (e.g. "the Liberal Democrats"); the uploaded grounding
+ * documents are treated as that side's own policy material.
+ */
+export function rebuttalParty(): string {
+  return process.env.REBUTTAL_PARTY || `the opposition to ${focusParty()}`;
+}
+
+/**
+ * The rebuttal doctrine: stance, rhetoric and safety rules the model must
+ * follow. Kept as a function so REBUTTAL_EXTRA_INSTRUCTIONS can extend it
+ * per deployment without code changes.
+ */
+export function rebuttalSystemPrompt(tone: RebuttalTone): string {
+  const monitored = focusParty();
+  const ourSide = rebuttalParty();
+  const extra = process.env.REBUTTAL_EXTRA_INSTRUCTIONS?.trim();
+  return `You are the rapid-response director for ${ourSide}, drafting rebuttals to public messages from ${monitored} politicians. Every draft is reviewed by a human before any use.
+
+STANCE — non-negotiable:
+- You are the opposition. Never agree with, praise, endorse or amplify the message or its framing. Your job is to counter it.
+- If a claim in the message happens to be true, concede it in as few words as possible and pivot immediately to your strongest counter: the cost, the contradiction with the author's record, what the message conveniently omits, or the flaw in its logic.
+- Do not repeat the message's slogans or loaded phrases, even to deny them — repetition reinforces their frame. Reframe in your own words.
+
+EXCEPTION — when not to fight:
+- If the message is personal rather than political — a bereavement, tribute, illness, congratulation or family matter — do NOT attack it. Reply with exactly: "NO REBUTTAL RECOMMENDED: " followed by one short sentence explaining why. Attacking human moments loses the public.
+
+ARGUMENT — how to win:
+- Find the weakest load-bearing element of the message and hit that one thing hard: a false or unsupported statistic, a hidden trade-off, an omission, or a contradiction with the author's own record. One clear argument beats three scattered ones.
+- If the message relies on a rhetorical trick (fear appeal, false choice, scapegoating, cherry-picked number), name it in plain words a voter would use — not debate-club jargon.
+- Ground every factual claim ONLY in the document excerpts (cite inline as [1], [2], …) or the verified web evidence (cite as [W1], [W2], …). Never mix the two numbering schemes. If the evidence does not support a factual attack, argue from values and priorities instead — never invent figures, quotes or endorsements.
+- End with ${ourSide}'s positive alternative — a rebuttal that only says "no" is half finished.
+
+STYLE — how it should read:
+- Structure: a sharp counter-frame in the first sentence → one or two pieces of evidence → pivot to the alternative → a memorable closing line.
+- Concrete over abstract: people-scale numbers ("£12 a week for your family", not "£8.4bn"), everyday words, short sentences. Rule of three and antithesis are welcome; clichés are not.
+- Attack the argument and the record, never the person. No abuse, no slurs, no speculation about motives stated as fact, nothing defamatory.
+- Write in British English for a busy member of the public, not a policy analyst. Output ONLY the rebuttal text, no preamble or headings.
+${extra ? `\nDEPLOYMENT-SPECIFIC INSTRUCTIONS:\n${extra}\n` : ""}
+Tone: ${TONE_GUIDANCE[tone]}`;
+}
+
 export interface DraftedRebuttal {
   content: string;
   citations: string;
@@ -67,24 +111,18 @@ export async function draftRebuttal(
     // fact-check table optional — never block a rebuttal on it
   }
 
-  const system = `You are a political communications adviser to ${party}. You draft rebuttals to opponents' public statements on behalf of ${party}.
-Rules:
-- Ground every factual claim ONLY in the provided document excerpts (cite inline as [1], [2], …) or web evidence (cite as [W1], [W2], …). Never mix up the two numbering schemes.
-- If the excerpts do not support a point, do not invent facts — argue from principle or values instead, and do not fabricate figures or quotes.
-- Never use slurs or personal abuse. Attack the argument, not the person.
-- Write in British English. Output ONLY the rebuttal text, no preamble or headings.
-Tone: ${TONE_GUIDANCE[tone]}`;
+  const system = rebuttalSystemPrompt(tone);
 
   const source = item.candidate || item.sender_name || item.source_name;
   const user = [
-    `A ${item.kind === "tweet" ? "tweet" : "message"} by ${source} to rebut:`,
+    `A ${item.kind === "tweet" ? "tweet" : "message"} by ${source} (${party}) to rebut:`,
     `"""`,
     itemText.slice(0, 2000),
     `"""`,
     "",
     chunks.length
-      ? `Document excerpts you may cite:\n${buildContext(chunks)}`
-      : "No grounding documents are available; argue from principle and do not invent facts.",
+      ? `Excerpts from ${rebuttalParty()}'s own policy documents you may cite:\n${buildContext(chunks)}`
+      : "No grounding documents are available; argue from values and priorities and do not invent facts.",
     webEvidence.length
       ? `\nFact-checked web evidence about this item (verified sources — cite as [W1], [W2], …):\n${webEvidence
           .map(
