@@ -68,18 +68,19 @@ X accounts ─────► Nitter RSS ──────────┘      
    lines via `REBUTTAL_EXTRA_INSTRUCTIONS` without touching code.
 7. **Fact-check & BS meter** — on any item, admins can run an on-demand
    fact-check: a cheap triage model extracts up to 3 checkable claims
-   (pure rhetoric exits early for pennies), then a single
-   [OpenRouter Fusion](https://openrouter.ai/openrouter/fusion) call — a
-   panel of models with web search plus a judge — verifies each claim
-   against reliable sources (gov.uk, ONS, OBR, Full Fact, BBC/Reuters),
-   returning verdicts, confidence, quotes and URLs. Grounding docs are
-   consulted alongside. Results are cached per item and rendered as a
-   0–100 **BS meter** (Grounded → Spin → Total Bull) with an uncertainty
-   band when sources disagree, a receipts list, and per-check token/cost
-   accounting. `FACT_CHECK_DAILY_CAP` adds a hard budget brake; if Fusion
-   is unavailable it degrades to a single web-search-enabled model.
-   Fact-checked items feed their web receipts into rebuttal drafts
-   (cited as [W1], [W2]) alongside grounding-doc citations.
+   (pure rhetoric exits early for pennies), then a single cheap model
+   (DeepSeek by default) with **OpenRouter's web-search plugin** attached
+   verifies each claim against reliable sources (gov.uk, ONS, OBR, Full
+   Fact, BBC/Reuters), returning verdicts, confidence, quotes and URLs —
+   the plugin does the searching, so a small model keeps tokens low.
+   Grounding docs are consulted alongside. Results are cached per item and
+   rendered as a 0–100 **BS meter** (Grounded → Spin → Total Bull) with an
+   uncertainty band when sources disagree, a receipts list, and per-check
+   token/cost accounting (the model line also shows how many web sources
+   were used). `FACT_CHECK_WEB_RESULTS` tunes search depth vs cost and
+   `FACT_CHECK_DAILY_CAP` is a hard budget brake. Fact-checked items feed
+   their web receipts into rebuttal drafts (cited as [W1], [W2]) alongside
+   grounding-doc citations.
 8. **Browse & search** — the public feed supports Postgres full-text search
    (subject, summary, and body, weighted) plus filtering by topic, type,
    party, and source, with newest/oldest sorting and pagination. Full emails
@@ -144,7 +145,9 @@ Environment variables (see `.env.example`):
 | `OPENROUTER_API_KEY` | OpenRouter key used for DeepSeek categorization. Without it, emails are archived but left uncategorized. |
 | `OPENROUTER_MODEL` | Model id, defaults to `deepseek/deepseek-chat-v3-0324`. |
 | `INGEST_SECRET` | Optional bearer token protecting `POST /api/ingest`. |
-| `FACT_CHECK_MODEL` | Web-verification model for fact-checks, default `openrouter/fusion`. |
+| `FACT_CHECK_MODEL` | Verification model (web plugin attached), default `deepseek/deepseek-chat-v3-0324`. |
+| `FACT_CHECK_FALLBACK_MODEL` | Optional distinct model tried if the primary verification call fails. |
+| `FACT_CHECK_WEB_RESULTS` | Web results fetched per check, 1–10 (default 5). Fewer = cheaper. |
 | `FACT_CHECK_DAILY_CAP` | Optional max fact-checks per rolling 24h (budget brake). |
 
 ## Running ingestion

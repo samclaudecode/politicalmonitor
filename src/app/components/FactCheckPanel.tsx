@@ -92,10 +92,10 @@ export default async function FactCheckPanel({
           </p>
         ) : !check ? (
           <p className="rebuttal-empty">
-            Not checked yet. Runs claim triage, then verifies against the web
-            (OpenRouter Fusion: model panel + search + judge), then compares
-            with your grounding docs. On-demand only — a check costs a few
-            pence and takes up to a couple of minutes.
+            Not checked yet. Runs claim triage, then verifies each claim
+            against live web search (reliable sources first), then compares
+            with your grounding docs. On-demand only — a check costs roughly a
+            penny or two and takes up to a minute.
             {cap !== null ? ` Daily cap: ${cap}.` : ""}
           </p>
         ) : check.status === "pending" ? (

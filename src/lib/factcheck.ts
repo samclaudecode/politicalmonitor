@@ -1,8 +1,11 @@
 // On-demand fact-checking pipeline:
 //   Stage 0  claim triage (cheap model) — early exit when nothing checkable
-//   Stage 1  one OpenRouter Fusion call (panel + web search + judge)
+//   Stage 1  one verification call: a single cheap model (DeepSeek by
+//            default) with OpenRouter's web-search plugin explicitly attached
 //   Stage 2  grounding-doc retrieval (local Postgres FTS)
 // Results are cached per item in fact_checks; nothing runs automatically.
+// Cost: one model pass + a handful of web results, far cheaper than a
+// multi-model panel. Tune with FACT_CHECK_MODEL / FACT_CHECK_WEB_RESULTS.
 import {
   getEmail,
   retrieveChunks,
@@ -13,9 +16,14 @@ import {
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_CLAIM_MODEL = "deepseek/deepseek-chat-v3-0324";
-const DEFAULT_FUSION_MODEL = "openrouter/fusion";
-// Fallback when Fusion is unavailable: same cheap model with web search.
-const FALLBACK_WEB_MODEL = "deepseek/deepseek-chat-v3-0324:online";
+// Verification model — a single cheap (Chinese) model; the web plugin does
+// the searching, so the model itself need not be a big Western one.
+const DEFAULT_VERIFY_MODEL = "deepseek/deepseek-chat-v3-0324";
+
+function webResults(): number {
+  const n = parseInt(process.env.FACT_CHECK_WEB_RESULTS || "", 10);
+  return Number.isNaN(n) ? 5 : Math.max(1, Math.min(10, n));
+}
 
 export const VERDICTS = [
   "accurate",
@@ -71,10 +79,29 @@ async function callOpenRouter(
   model: string,
   system: string,
   user: string,
-  temperature: number
-): Promise<{ content: string; usage: OpenRouterUsage }> {
+  temperature: number,
+  opts?: { web?: boolean }
+): Promise<{ content: string; usage: OpenRouterUsage; citations: number }> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
+
+  const body: Record<string, unknown> = {
+    model,
+    temperature,
+    usage: { include: true },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
+  if (opts?.web) {
+    // OpenRouter web plugin (Exa-powered): runs a live search and injects the
+    // results into the model's context. This is what actually gives the model
+    // web access — relying on the ":online" suffix or a model's built-in
+    // search proved unreliable.
+    body.plugins = [{ id: "web", max_results: webResults() }];
+  }
+
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -83,28 +110,29 @@ async function callOpenRouter(
       "HTTP-Referer": "https://github.com/samclaudecode/politicalmonitor",
       "X-Title": "PoliticalMonitor Fact Check",
     },
-    body: JSON.stringify({
-      model,
-      temperature,
-      usage: { include: true },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-    signal: AbortSignal.timeout(280_000), // Fusion panels can take a while
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180_000),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`OpenRouter ${res.status} (${model}): ${text.slice(0, 300)}`);
   }
   const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: {
+      message?: {
+        content?: string;
+        annotations?: { type?: string }[];
+      };
+    }[];
     usage?: OpenRouterUsage;
   };
-  const content = data.choices?.[0]?.message?.content?.trim();
+  const message = data.choices?.[0]?.message;
+  const content = message?.content?.trim();
   if (!content) throw new Error(`OpenRouter returned no content (${model})`);
-  return { content, usage: data.usage ?? {} };
+  const citations = (message?.annotations ?? []).filter(
+    (a) => a.type === "url_citation"
+  ).length;
+  return { content, usage: data.usage ?? {}, citations };
 }
 
 function extractJson<T>(raw: string): T {
@@ -142,13 +170,13 @@ export async function extractClaims(
   return { claims, usage };
 }
 
-// ---------- Stage 1: Fusion verification ----------
+// ---------- Stage 1: web-grounded verification ----------
 
-const VERIFY_PROMPT = `You are a rigorous fact-checker verifying claims made by UK politicians. Search the web for evidence, prioritising reliable sources: gov.uk, ons.gov.uk, parliament.uk, obr.uk, fullfact.org, BBC, Reuters, FT. Ignore partisan blogs and social media.
+const VERIFY_PROMPT = `You are a rigorous fact-checker verifying claims made by UK politicians. Live web search results have been injected into this conversation for you to use — do NOT say you lack web access or tools; use the results provided. Prioritise reliable sources: gov.uk, ons.gov.uk, parliament.uk, obr.uk, fullfact.org, BBC, Reuters, FT. Ignore partisan blogs and social media.
 For EACH claim respond with a verdict from exactly: "accurate", "mostly-true", "misleading", "unsupported", "false".
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object (no prose, no commentary):
 {"claims": [{"claim": "...", "verdict": "...", "confidence": 0-100, "evidence_quote": "short quote from the best source", "evidence_url": "https://...", "source": "publisher name", "rationale": "one sentence", "contested": true/false}], "notes": "one sentence on any disagreement between sources, or null"}
-Set "contested" true when reliable sources disagree or evidence is thin. Never invent quotes or URLs — if you cannot find evidence, use verdict "unsupported" with empty evidence fields.`;
+Set "contested" true when reliable sources disagree or evidence is thin. Base evidence_quote and evidence_url ONLY on the provided search results — never invent quotes or URLs. If the results do not cover a claim, use verdict "unsupported" with empty evidence fields (do not editorialise about missing tools).`;
 
 function normalizeClaims(raw: unknown): CheckedClaim[] {
   if (!Array.isArray(raw)) return [];
@@ -196,24 +224,36 @@ async function verifyClaims(
     ...claims.map((c, i) => `${i + 1}. ${c}`),
   ].join("\n");
 
-  const fusionModel = process.env.FACT_CHECK_MODEL || DEFAULT_FUSION_MODEL;
-  let content: string, usage: OpenRouterUsage, model = fusionModel;
+  const primary = process.env.FACT_CHECK_MODEL || DEFAULT_VERIFY_MODEL;
+  const fallback = process.env.FACT_CHECK_FALLBACK_MODEL || "";
+  let content: string, usage: OpenRouterUsage, citations: number, model = primary;
   let totalTokens = 0;
   let totalCost = 0;
   try {
-    ({ content, usage } = await callOpenRouter(fusionModel, VERIFY_PROMPT, user, 0.2));
+    ({ content, usage, citations } = await callOpenRouter(
+      primary,
+      VERIFY_PROMPT,
+      user,
+      0.2,
+      { web: true }
+    ));
   } catch (err) {
-    // Fusion unavailable → degrade to a single web-search-enabled model.
-    console.error(`fact-check: ${fusionModel} failed, falling back:`, err);
-    model = FALLBACK_WEB_MODEL;
-    ({ content, usage } = await callOpenRouter(FALLBACK_WEB_MODEL, VERIFY_PROMPT, user, 0.2));
+    if (!fallback || fallback === primary) throw err;
+    console.error(`fact-check: ${primary} failed, trying ${fallback}:`, err);
+    model = fallback;
+    ({ content, usage, citations } = await callOpenRouter(
+      fallback,
+      VERIFY_PROMPT,
+      user,
+      0.2,
+      { web: true }
+    ));
   }
   totalTokens += usage.total_tokens ?? 0;
   totalCost += usage.cost ?? 0;
 
-  // Research-oriented models (Fusion especially) sometimes answer in prose
-  // despite instructions. Structure the analysis with a cheap second pass
-  // rather than failing the whole check.
+  // Some models occasionally answer in prose despite instructions. Structure
+  // the analysis with a cheap second pass (no web) rather than failing.
   let parsed: { claims?: unknown; notes?: unknown };
   try {
     parsed = extractJson<{ claims?: unknown; notes?: unknown }>(content);
@@ -229,13 +269,20 @@ async function verifyClaims(
     totalTokens += structured.usage.total_tokens ?? 0;
     totalCost += structured.usage.cost ?? 0;
     parsed = extractJson<{ claims?: unknown; notes?: unknown }>(structured.content);
-    model = `${model} + ${structurer} (structured)`;
+    model = `${model} (structured)`;
+  }
+
+  // Surface when the web search returned nothing usable, so a wall of
+  // "unsupported" verdicts is understood as thin sourcing, not falsity.
+  let notes = typeof parsed.notes === "string" ? parsed.notes.slice(0, 500) : null;
+  if (citations === 0) {
+    notes = `Web search returned no usable sources for these claims${notes ? ` — ${notes}` : "."}`;
   }
 
   return {
     claims: normalizeClaims(parsed.claims),
-    notes: typeof parsed.notes === "string" ? parsed.notes.slice(0, 500) : null,
-    model,
+    notes,
+    model: `${model} · web×${webResults()}${citations ? ` (${citations} sources)` : ""}`,
     usage: { total_tokens: totalTokens, cost: totalCost },
   };
 }
